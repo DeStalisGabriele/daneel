@@ -1,0 +1,185 @@
+#!/home/gabriele/opt/hevy-venv/bin/python
+"""Cerca prodotti su Amazon.it e stampa i risultati in JSON (per la skill `amazon` di Daneel).
+
+Uso: amazon-cerca "padella in ghisa" [--max 12] [--foto DIR]
+     amazon-cerca --prodotto https://www.amazon.it/dp/B0...   (dettagli di un prodotto)
+
+Solo lettura: apre la ricerca in un Chromium headless con un profilo persistente
+(~/.local/share/amazon-browser), legge i risultati e chiude. Non clicca mai "Acquista".
+Con --foto scarica l'immagine di ogni risultato in DIR (per allegarla su Telegram).
+"""
+
+import argparse
+import json
+import re
+import sys
+import urllib.request
+from pathlib import Path
+from urllib.parse import quote_plus
+
+from playwright.sync_api import sync_playwright
+
+PROFILO = Path.home() / ".local/share/amazon-browser"
+UA = ("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
+      "Chrome/141.0.0.0 Safari/537.36")
+
+# Legge i risultati dalla pagina di ricerca (layout desktop).
+_RISULTATI_JS = r"""() => [...document.querySelectorAll('div[data-component-type="s-search-result"][data-asin]')]
+  .filter(d => d.dataset.asin)
+  .map(d => {
+    const t = s => (d.querySelector(s)?.textContent || '').trim();
+    const titolo = t('h2 span') || t('h2');
+    const marca = t('[data-cy="title-recipe"] .a-size-base-plus') || t('h2 + div .a-size-base-plus');
+    const prezzo = t('.a-price:not(.a-text-price) .a-offscreen');
+    const prima = t('.a-price.a-text-price .a-offscreen');
+    const voto = (d.querySelector('[aria-label*="su 5 stelle"], i[class*="a-star"] span')?.getAttribute('aria-label')
+                  || t('i[class*="a-star"] span'));
+    const rec = d.querySelector('a[href*="#customerReviews"] span, [aria-label$="valutazioni"], [aria-label$="recensioni"]');
+    const consegna = (d.querySelector('[data-cy="delivery-recipe"]')?.innerText || '').trim();
+    return {
+      asin: d.dataset.asin,
+      titolo: (marca && !titolo.startsWith(marca) ? marca + ' ' : '') + titolo,
+      prezzo: prezzo || null,
+      prezzo_prima: prima && prima !== prezzo ? prima : null,
+      voto_testo: voto || null,
+      recensioni_testo: rec ? (rec.getAttribute('aria-label') || rec.textContent).trim() : null,
+      consegna: consegna ? consegna.replace(/\s+/g, ' ') : null,
+      prime: !!d.querySelector('i.a-icon-prime, [aria-label="Amazon Prime"]'),
+      sponsorizzato: /Sponsorizzato|Sponsored/.test(d.textContent.slice(0, 400)),
+      immagine: d.querySelector('img.s-image')?.src || null,
+    };
+  })"""
+
+_PRODOTTO_JS = r"""() => {
+  const t = s => (document.querySelector(s)?.textContent || '').trim().replace(/\s+/g, ' ');
+  return {
+    titolo: t('#productTitle'),
+    prezzo: t('#corePrice_feature_div .a-offscreen') || t('.a-price .a-offscreen') || null,
+    voto_testo: t('#acrPopover .a-icon-alt') || null,
+    recensioni_testo: t('#acrCustomerReviewText') || null,
+    disponibilita: t('#availability') || null,
+    consegna: t('#mir-layout-DELIVERY_BLOCK') || null,
+    venditore: t('#merchantInfoFeature_feature_div .offer-display-feature-text') || t('#sellerProfileTriggerId') || null,
+    punti: [...document.querySelectorAll('#feature-bullets li span.a-list-item')].map(e => e.textContent.trim()).filter(Boolean).slice(0, 8),
+    immagine: document.querySelector('#landingImage')?.src || null,
+  };
+}"""
+
+
+def _numero(testo, intero=False):
+    """'4,5 su 5 stelle' -> 4.5; '12.463 valutazioni' -> 12463."""
+    if not testo:
+        return None
+    m = re.search(r"\d[\d.,]*", testo)
+    if not m:
+        return None
+    s = m.group()
+    if intero:
+        return int(re.sub(r"[.,]", "", s))
+    return float(s.replace(".", "").replace(",", ".")) if "," in s else float(s)
+
+
+def _apri(p):
+    PROFILO.mkdir(parents=True, exist_ok=True)
+    ctx = p.chromium.launch_persistent_context(
+        str(PROFILO), headless=True, locale="it-IT", timezone_id="Europe/Rome", user_agent=UA,
+        viewport={"width": 1280, "height": 1600}, args=["--disable-blink-features=AutomationControlled"])
+    pagina = ctx.pages[0] if ctx.pages else ctx.new_page()
+    return ctx, pagina
+
+
+def _bloccato(pagina):
+    testo = pagina.content()
+    return "captcha" in pagina.url or "validateCaptcha" in testo or "Inserisci i caratteri" in testo
+
+
+def _chiudi_cookie(pagina):
+    for sel in ("#sp-cc-rejectall-link", "#sp-cc-accept"):
+        try:
+            if pagina.locator(sel).is_visible(timeout=1500):
+                pagina.locator(sel).click()
+                return
+        except Exception:
+            pass
+
+
+def cerca(query, massimo, cartella_foto):
+    with sync_playwright() as p:
+        ctx, pagina = _apri(p)
+        try:
+            url = f"https://www.amazon.it/s?k={quote_plus(query)}"
+            pagina.goto(url, wait_until="domcontentloaded", timeout=30_000)
+            _chiudi_cookie(pagina)
+            if _bloccato(pagina):
+                return {"errore": "Amazon ha chiesto un CAPTCHA: riprova tra qualche minuto.", "url": url}
+            try:
+                pagina.wait_for_selector('div[data-component-type="s-search-result"]', timeout=10_000)
+            except Exception:
+                return {"errore": "Nessun risultato letto (pagina cambiata o vuota).", "url": url}
+            grezzi = pagina.evaluate(_RISULTATI_JS)
+        finally:
+            ctx.close()
+
+    risultati = []
+    for r in grezzi:
+        if not r["titolo"] or not r["prezzo"]:
+            continue
+        r["voto"] = _numero(r.pop("voto_testo"))
+        r["recensioni"] = _numero(r.pop("recensioni_testo"), intero=True)
+        r["link"] = f"https://www.amazon.it/dp/{r['asin']}"
+        risultati.append(r)
+        if len(risultati) >= massimo:
+            break
+
+    if cartella_foto:
+        cartella = Path(cartella_foto)
+        cartella.mkdir(parents=True, exist_ok=True)
+        for r in risultati:
+            if r["immagine"]:
+                dest = cartella / f"{r['asin']}.jpg"
+                try:
+                    req = urllib.request.Request(r["immagine"], headers={"User-Agent": UA})
+                    dest.write_bytes(urllib.request.urlopen(req, timeout=15).read())
+                    r["foto"] = str(dest)
+                except Exception:
+                    r["foto"] = None
+    return {"query": query, "url": url, "risultati": risultati}
+
+
+def prodotto(link):
+    m = re.search(r"/(?:dp|gp/product)/([A-Z0-9]{10})", link)
+    if not m:
+        return {"errore": "Link Amazon non valido: serve /dp/<ASIN>."}
+    url = f"https://www.amazon.it/dp/{m.group(1)}"
+    with sync_playwright() as p:
+        ctx, pagina = _apri(p)
+        try:
+            pagina.goto(url, wait_until="domcontentloaded", timeout=30_000)
+            _chiudi_cookie(pagina)
+            if _bloccato(pagina):
+                return {"errore": "Amazon ha chiesto un CAPTCHA: riprova tra qualche minuto.", "url": url}
+            d = pagina.evaluate(_PRODOTTO_JS)
+        finally:
+            ctx.close()
+    d["voto"] = _numero(d.pop("voto_testo"))
+    d["recensioni"] = _numero(d.pop("recensioni_testo"), intero=True)
+    d["link"] = url
+    return d
+
+
+if __name__ == "__main__":
+    ap = argparse.ArgumentParser()
+    ap.add_argument("query", nargs="?")
+    ap.add_argument("--max", type=int, default=12)
+    ap.add_argument("--foto")
+    ap.add_argument("--prodotto")
+    a = ap.parse_args()
+    if a.prodotto:
+        out = prodotto(a.prodotto)
+    elif a.query:
+        out = cerca(a.query, a.max, a.foto)
+    else:
+        ap.error("serve una ricerca o --prodotto")
+    json.dump(out, sys.stdout, ensure_ascii=False, indent=1)
+    print()
+    sys.exit(1 if "errore" in out else 0)

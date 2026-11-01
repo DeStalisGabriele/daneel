@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+"""Manda un compito a Daneel dell'app (dal 2026-10-30 i timer non passano più dalla sessione Telegram).
+
+  manda-a-daneel --etichetta "Routine del mattino" "testo del compito"
+      un turno nella chat di Daneel con l'etichetta ⏰: la risposta arriva in chat e come notifica
+  manda-a-daneel --silenzioso "/sync-plancia-hevy"
+      lavora in una sessione a parte; scrive a Gabriele (chat + notifica) solo se c'è qualcosa da dire
+
+Se Daneel sta già rispondendo, aspetta che finisca (al massimo 10 minuti).
+"""
+
+import json
+import sys
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+a = sys.argv[1:]
+silenzioso = "--silenzioso" in a
+if silenzioso:
+    a.remove("--silenzioso")
+etichetta = None
+if "--etichetta" in a:
+    i = a.index("--etichetta"); etichetta = a[i + 1]; del a[i:i + 2]
+if len(a) != 1:
+    sys.exit(__doc__)
+token = (Path.home() / ".config/daneel-app/token").read_text().strip()
+dati = {"prompt": a[0], "silenzioso": silenzioso, "etichetta": etichetta}
+req = urllib.request.Request("http://127.0.0.1:8791/api/sistema", json.dumps(dati).encode(),
+                             {"Content-Type": "application/json", "Authorization": "Bearer " + token})
+try:
+    print(json.dumps(json.load(urllib.request.urlopen(req, timeout=1800)), ensure_ascii=False))
+except (urllib.error.URLError, OSError) as e:
+    sys.exit(f"Daneel dell'app non ha preso il compito: {e}")

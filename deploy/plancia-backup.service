@@ -1,0 +1,6 @@
+[Unit]
+Description=Backup notturno della Plancia e della chat dell app Daneel
+
+[Service]
+Type=oneshot
+ExecStart=%h/bin/plancia-backup

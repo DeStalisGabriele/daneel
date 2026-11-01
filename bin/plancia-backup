@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+"""Backup notturno della Plancia e della chat dell'app Daneel (timer plancia-backup.timer, alle 3:40).
+
+In ~/backup/plancia/AAAA-MM-GG/:
+  plancia.db    copia con il backup online di SQLite (sicura anche mentre l'app scrive), verificata con integrity_check
+  plancia.json  gli stessi documenti in JSON leggibile ({collezione: {id: dati}}), per ripristinarli anche a mano
+  chat*.json    le conversazioni dell'app
+Tiene gli ultimi 14 backup più il più recente di ognuna delle ultime 8 settimane. Se qualcosa va storto non lascia
+una cartella a metà, esce con errore e avvisa Gabriele su Telegram.
+
+Ripristino: systemctl --user stop daneel-app; cp ~/backup/plancia/<data>/plancia.db ~/.local/share/daneel-app/;
+systemctl --user start daneel-app
+"""
+
+import json
+import shutil
+import sqlite3
+import subprocess
+import sys
+from datetime import date, datetime
+from pathlib import Path
+
+HOME = Path.home()
+DATI = HOME / ".local/share/daneel-app"
+DEST = HOME / "backup/plancia"
+GIORNI, SETTIMANE = 14, 8
+
+
+def avvisa(testo):
+    subprocess.run([str(HOME / "bin/promemoria-telegram.sh"), testo], capture_output=True)
+
+
+def backup():
+    oggi = date.today().isoformat()
+    tmp = DEST / f".{oggi}.tmp"
+    shutil.rmtree(tmp, ignore_errors=True)
+    tmp.mkdir(parents=True)
+    tmp.chmod(0o700)
+    sorgente = sqlite3.connect(DATI / "plancia.db")
+    copia = sqlite3.connect(tmp / "plancia.db")
+    sorgente.backup(copia)
+    sorgente.close()
+    esito = copia.execute("PRAGMA integrity_check").fetchone()[0]
+    if esito != "ok":
+        raise RuntimeError(f"integrity_check: {esito}")
+    tutto = {}
+    for col, id_, data in copia.execute("SELECT col, id, data FROM docs ORDER BY col, id"):
+        tutto.setdefault(col, {})[id_] = json.loads(data)
+    copia.close()
+    (tmp / "plancia.json").write_text(json.dumps(tutto, ensure_ascii=False, indent=1))
+    for f in DATI.glob("chat*.json"):
+        shutil.copy2(f, tmp / f.name)
+    finale = DEST / oggi
+    shutil.rmtree(finale, ignore_errors=True)
+    tmp.rename(finale)
+    return finale, sum(len(v) for v in tutto.values())
+
+
+def pota():
+    cartelle = sorted((p for p in DEST.iterdir() if p.is_dir() and not p.name.startswith(".")), reverse=True)
+    tieni = set(cartelle[:GIORNI])
+    settimane = {}
+    for p in cartelle:
+        try:
+            s = datetime.strptime(p.name, "%Y-%m-%d").isocalendar()[:2]
+        except ValueError:
+            continue
+        settimane.setdefault(s, p)  # la più recente di ogni settimana (sono in ordine decrescente)
+    tieni.update(list(settimane.values())[:SETTIMANE])
+    for p in cartelle:
+        if p not in tieni:
+            shutil.rmtree(p)
+
+
+if __name__ == "__main__":
+    try:
+        DEST.mkdir(parents=True, exist_ok=True)
+        DEST.chmod(0o700)
+        cartella, n = backup()
+        pota()
+        print(f"backup ok: {cartella} ({n} documenti)")
+    except Exception as ex:  # noqa: BLE001
+        print(f"backup FALLITO: {ex}", file=sys.stderr)
+        avvisa(f"⚠️ Backup notturno della Plancia non riuscito: {ex}")
+        sys.exit(1)

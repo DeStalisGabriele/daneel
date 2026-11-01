@@ -1,0 +1,16 @@
+#!/bin/bash
+# Manda una notifica all'app Daneel sull'iPhone (Web Push). Uso: notifica-app "testo" [agente] [titolo]
+# agente: daneel (predefinito), calendario, postino, nutrizionista, amanuense. Stampa quante notifiche sono partite.
+[ -z "$1" ] && { echo "uso: notifica-app \"testo\" [agente] [titolo]" >&2; exit 2; }
+exec python3 - "$@" <<'PY'
+import json, sys, urllib.request
+from pathlib import Path
+testo, agente = sys.argv[1], (sys.argv[2] if len(sys.argv) > 2 else "daneel")
+dati = {"testo": testo, "agente": agente}
+if len(sys.argv) > 3:
+    dati["titolo"] = sys.argv[3]
+token = (Path.home() / ".config/daneel-app/token").read_text().strip()
+req = urllib.request.Request("http://127.0.0.1:8791/api/notifica", json.dumps(dati).encode(),
+                             {"Content-Type": "application/json", "Authorization": "Bearer " + token})
+print(json.load(urllib.request.urlopen(req, timeout=30))["mandate"])
+PY

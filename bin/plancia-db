@@ -1,0 +1,69 @@
+#!/usr/bin/env python3
+"""La Plancia sul server (app Daneel), da riga di comando: per le skill e gli script, al posto di ArtifactData.
+
+  plancia-db get giorni/2026-10-29          un documento: {"exists", "data", "version"}
+  plancia-db list salute                     una collezione: {"docs": [{"id", "data", "version"}]}
+  plancia-db set giorni/2026-10-29 '<json>'  sostituisce il documento (o @file.json)
+  plancia-db update giorni/2026-10-29 '<json>'  unisce i campi (in profondità; {"__delete__": true} toglie un campo)
+  plancia-db delete giorni/2026-10-29
+  plancia-db agenda 2026-10-29 [2026-10-30]  gli eventi del calendario
+
+Opzione --if-version N su set/update: scrive solo se il documento è ancora a quella versione.
+La pagina della Plancia nell'app si aggiorna da sola a ogni scrittura.
+"""
+
+import json
+import sys
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+BASE = "http://127.0.0.1:8791/api/plancia"
+
+
+def chiama(metodo, percorso, dati=None):
+    token = (Path.home() / ".config/daneel-app/token").read_text().strip()
+    corpo = json.dumps(dati).encode() if dati is not None else None
+    req = urllib.request.Request(BASE + percorso, corpo, method=metodo,
+                                 headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"})
+    try:
+        return json.load(urllib.request.urlopen(req, timeout=60))
+    except urllib.error.HTTPError as e:
+        sys.exit(f"errore {e.code}: {e.read().decode(errors='replace')}")
+
+
+def json_da(arg):
+    return json.loads(Path(arg[1:]).read_text() if arg.startswith("@") else arg)
+
+
+def main(a):
+    if not a or a[0] in ("-h", "--help"):
+        print(__doc__); return
+    ver = None
+    if "--if-version" in a:
+        i = a.index("--if-version"); ver = int(a[i + 1]); del a[i:i + 2]
+    cmd = a[0]
+    q = f"?if_version={ver}" if ver is not None else ""
+    if cmd == "list":
+        out = chiama("GET", f"/col/{a[1]}")
+    elif cmd == "agenda":
+        out = chiama("GET", f"/agenda?da={a[1]}" + (f"&a={a[2]}" if len(a) > 2 else ""))
+    else:
+        col, _, id_ = a[1].partition("/")
+        if not id_:
+            sys.exit("serve collezione/id, es. giorni/2026-10-29")
+        if cmd == "get":
+            out = chiama("GET", f"/doc/{col}/{id_}")
+        elif cmd == "set":
+            out = chiama("PUT", f"/doc/{col}/{id_}{q}", json_da(a[2]))
+        elif cmd == "update":
+            out = chiama("PATCH", f"/doc/{col}/{id_}{q}", json_da(a[2]))
+        elif cmd == "delete":
+            out = chiama("DELETE", f"/doc/{col}/{id_}")
+        else:
+            sys.exit(f"comando sconosciuto: {cmd}")
+    print(json.dumps(out, ensure_ascii=False, indent=1))
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

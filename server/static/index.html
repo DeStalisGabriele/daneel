@@ -1,0 +1,719 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Daneel</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Daneel">
+<meta name="theme-color" content="#0f1115">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icona-180.png">
+<script src="daneel.js?v=5"></script>
+<style>
+:root {
+  --sfondo: #f4f4f6; --carta: #ffffff; --testo: #15171c; --tenue: #6b7080; --bordo: #e2e3e8;
+  --mio: #2f6fed; --mio-testo: #ffffff; --accento: #2f6fed; --errore: #c0392b; --chip: #eceef3;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --sfondo: #0f1115; --carta: #1a1d24; --testo: #eceef3; --tenue: #8d93a3; --bordo: #2a2e38;
+    --mio: #3b78f0; --mio-testo: #ffffff; --accento: #6d9cff; --errore: #ff6b5b; --chip: #232733;
+  }
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; background: var(--sfondo); color: var(--testo); -webkit-text-size-adjust: 100%;
+  font: 17px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; overscroll-behavior: none; }
+/* Il corpo è fisso e copre tutto lo schermo (top e bottom a 0: su iPhone dalla schermata Home l’altezza misurata
+   è più corta dello schermo). Solo a tastiera aperta prende l’altezza della parte visibile (visualViewport, dal JS),
+   così iOS non sposta la pagina e la barra di scrittura resta appena sopra i tasti. */
+body { display: flex; flex-direction: column; position: fixed; top: 0; left: 0; right: 0; bottom: 0; height: auto; overflow: hidden; }
+html.tastiera body { top: var(--su, 0px); bottom: auto; height: var(--alt); }
+/* iOS 26 (WebKit bug 301108): nelle app dalla schermata Home con la barra di stato trasparente lo schermo risulta
+   più corto della barra di stato finché la pagina non è alta almeno quanto lo schermo. Così lo diventa. */
+@media (display-mode: standalone) { html { min-height: min(100lvh, calc(100% + env(safe-area-inset-top))); } }
+header { display: flex; align-items: center; gap: 10px; padding: calc(env(safe-area-inset-top) + 4px) 8px 6px 16px;
+  min-height: calc(env(safe-area-inset-top) + 54px); background: var(--carta); border-bottom: .5px solid var(--bordo); }
+#testa { width: 36px; height: 36px; display: grid; place-items: center; }
+header h1 { font-size: 17px; margin: 0; flex: 1; font-weight: 600; }
+header .stato { font-size: 12px; color: var(--tenue); font-weight: 400; display: block; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+.icona { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border-radius: 50%; color: var(--accento); }
+.icona svg { width: 24px; height: 24px; }
+#chat { flex: 1; overflow-y: auto; padding: 14px 12px 8px; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.msg { width: fit-content; max-width: 86%; margin: 0 0 10px; padding: 9px 13px; border-radius: 18px; word-wrap: break-word;
+  overflow-wrap: anywhere; }
+.msg.gabriele { margin-left: auto; background: var(--mio); color: var(--mio-testo); border-bottom-right-radius: 6px;
+  white-space: pre-wrap; }
+.msg.daneel { background: var(--carta); border: 1px solid var(--bordo); border-bottom-left-radius: 6px; }
+.msg.errore { background: transparent; color: var(--errore); font-size: 14px; border: 1px dashed var(--errore); }
+.msg.sistema { margin: 14px auto 8px; padding: 2px 10px; background: transparent; color: var(--tenue); font-size: 13px; text-align: center; }
+.msg .foto-n { display: block; font-size: 13px; opacity: .85; }
+.msg p { margin: 0 0 8px; } .msg p:last-child { margin-bottom: 0; }
+.msg ul, .msg ol { margin: 4px 0 8px; padding-left: 22px; } .msg li { margin: 2px 0; }
+.msg h3, .msg h4 { margin: 8px 0 4px; font-size: 16px; }
+.msg a { color: var(--accento); }
+.msg code { font: 14px ui-monospace, Menlo, monospace; background: var(--chip); padding: 1px 4px; border-radius: 4px; }
+.msg pre { background: var(--chip); padding: 8px; border-radius: 8px; overflow-x: auto; }
+.msg pre code { background: none; padding: 0; }
+.msg img { display: block; max-width: 60%; max-height: 130px; object-fit: contain; margin: 6px 0; border-radius: 10px; background: #fff; }
+.msg table { border-collapse: collapse; font-size: 14px; display: block; overflow-x: auto; }
+.msg td, .msg th { border: 1px solid var(--bordo); padding: 3px 6px; }
+.attivita { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.chip { font-size: 13px; color: var(--tenue); background: var(--chip); padding: 3px 10px; border-radius: 12px; }
+.pensa { display: inline-flex; gap: 4px; padding: 4px 2px; }
+.pensa i { width: 7px; height: 7px; border-radius: 50%; background: var(--tenue); animation: b 1.2s infinite; }
+.pensa i:nth-child(2) { animation-delay: .15s; } .pensa i:nth-child(3) { animation-delay: .3s; }
+@keyframes b { 0%, 60%, 100% { opacity: .25; } 30% { opacity: 1; } }
+#anteprime { display: flex; gap: 6px; padding: 0 12px; overflow-x: auto; }
+#anteprime:empty { display: none; }
+#via { display: none; align-items: center; gap: 6px; margin: 0 4px 8px; padding: 4px 4px 4px 12px; border-radius: 16px;
+  background: var(--chip); color: var(--testo); font-size: 14px; width: fit-content; }
+#via.su { display: flex; }
+#via button { width: 26px; height: 26px; border-radius: 50%; color: var(--tenue); font-size: 13px; }
+#anteprime div { position: relative; flex: none; }
+#anteprime img { width: 58px; height: 58px; object-fit: cover; border-radius: 10px; margin-top: 8px; }
+#anteprime button { position: absolute; top: 2px; right: -6px; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--testo); color: var(--sfondo); font-size: 13px; line-height: 22px; }
+/* Barra di scrittura come in Messaggi: fotocamera a sinistra, campo arrotondato con il tasto invia dentro.
+   Il margine sotto (la barra Home) vale solo a tastiera chiusa: con la tastiera aperta iOS lo riporta lo stesso. */
+footer { position: relative; flex: none; background: var(--carta); border-top: .5px solid var(--bordo);
+  padding: 10px 8px max(10px, calc(env(safe-area-inset-bottom) - 6px)); }
+html.tastiera footer { padding-bottom: 8px; }
+/* Barra delle schede come nell'app Salute di iOS 26: una pillola sospesa sopra il contenuto, semitrasparente e
+   sfocata, con la scheda attiva in una capsula più chiara. Con la tastiera aperta sparisce. */
+#schede { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: flex; justify-content: center;
+  padding: 0 max(14px, env(safe-area-inset-left, 0px)) max(10px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-right, 0px));
+  pointer-events: none; }
+#schede .pillola { pointer-events: auto; width: min(100%, 440px); display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px;
+  padding: 5px; border-radius: 999px; background: color-mix(in srgb, var(--carta) 70%, transparent);
+  -webkit-backdrop-filter: blur(22px) saturate(180%); backdrop-filter: blur(22px) saturate(180%);
+  border: .5px solid color-mix(in srgb, var(--testo) 14%, transparent); box-shadow: 0 10px 34px rgba(0, 0, 0, .28); }
+#schede button { display: grid; justify-items: center; gap: 1px; padding: 6px 0 4px; min-height: 52px; border-radius: 999px;
+  color: var(--testo); font-size: 10.5px; font-weight: 600; letter-spacing: .01em; transition: background .2s, color .2s; }
+#schede button svg { width: 24px; height: 24px; }
+#schede button[aria-selected="true"] { color: var(--accento); background: color-mix(in srgb, var(--testo) 11%, transparent); }
+html.tastiera #schede { display: none; }
+/* la chat lascia lo spazio della pillola sotto la barra di scrittura */
+body > footer { margin-bottom: calc(66px + max(10px, env(safe-area-inset-bottom))); }
+html.tastiera body > footer { margin-bottom: 0; }
+footer { padding-bottom: 10px !important; }
+html.tastiera footer { padding-bottom: 8px !important; }
+#pagina { flex: 1; width: 100%; border: 0; background: var(--sfondo); display: none; }
+html.plancia #pagina { display: block; }
+html.plancia body > header, html.plancia #chat, html.plancia body > footer, html.plancia #velo { display: none !important; }
+.barra { display: flex; align-items: flex-end; gap: 2px; }
+#allega, #agenti { margin-bottom: -2px; }
+#agenti { position: relative; }
+#agenti .mini { width: 32px; height: 32px; display: grid; place-items: center; }
+#agenti::after { content: ""; position: absolute; right: 3px; bottom: 7px; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accento); box-shadow: 0 0 0 2px var(--carta); }
+/* Tendina dei subagenti: sale dalla barra in basso */
+#velo { position: fixed; inset: 0; background: rgba(0,0,0,.35); opacity: 0; pointer-events: none; transition: opacity .2s; z-index: 5; }
+#velo.su { opacity: 1; pointer-events: auto; }
+#tendina { position: absolute; left: 8px; right: 8px; bottom: calc(100% + 8px); z-index: 6; background: var(--carta);
+  border: .5px solid var(--bordo); border-radius: 18px; padding: 6px; box-shadow: 0 12px 40px rgba(0,0,0,.28);
+  transform: translateY(12px) scale(.98); opacity: 0; pointer-events: none; transition: transform .2s, opacity .2s; }
+#tendina.su { transform: none; opacity: 1; pointer-events: auto; }
+#tendina .titolo { font-size: 13px; color: var(--tenue); padding: 6px 10px 4px; }
+.voce { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 6px 10px; min-height: 56px;
+  border-radius: 12px; }
+.voce:active { background: var(--chip); }
+.voce.scelto { background: var(--chip); }
+.voce .av { width: 44px; height: 44px; flex: none; display: grid; place-items: center; }
+.voce b { display: block; font-size: 16px; font-weight: 600; }
+.voce small { display: block; font-size: 13px; color: var(--tenue); line-height: 1.3; }
+.voce .spunta { margin-left: auto; color: var(--accento); font-size: 18px; visibility: hidden; }
+.voce.scelto .spunta { visibility: visible; }
+.campo { flex: 1; min-width: 0; display: flex; align-items: flex-end; min-height: 40px; padding: 3px 3px 3px 14px;
+  border: 1px solid var(--bordo); border-radius: 20px; background: var(--sfondo); }
+.campo:focus-within { border-color: var(--tenue); }
+#testo { flex: 1; min-width: 0; min-height: 32px; max-height: 132px; overflow-y: auto; padding: 5px 0; margin: 0;
+  color: var(--testo); font-size: 17px; line-height: 22px; outline: none; white-space: pre-wrap; overflow-wrap: anywhere;
+  -webkit-user-select: text; user-select: text; cursor: text; }
+#testo:empty::before { content: attr(data-placeholder); color: var(--tenue); pointer-events: none; }
+#allega { position: relative; overflow: hidden; }
+#allega input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; font-size: 0; cursor: pointer; }
+#invia { position: relative; flex: none; width: 32px; height: 32px; margin-left: 6px; border-radius: 50%;
+  display: grid; place-items: center; background: var(--mio); color: #fff; transition: background .15s; }
+#invia::after { content: ""; position: absolute; inset: -6px; }  /* area di tocco di 44 pt (regole Apple) */
+#invia svg { width: 18px; height: 18px; }
+#invia:disabled { background: var(--bordo); color: var(--tenue); }
+#invia.mic { background: transparent; color: var(--accento); }
+#invia.stop { background: #ff3b30; color: #fff; }
+/* Mentre registri un vocale il campo mostra il tempo al posto del testo */
+#reg { flex: 1; display: none; align-items: center; gap: 8px; height: 32px; color: var(--testo); font-variant-numeric: tabular-nums; }
+footer.registra #reg { display: flex; }
+footer.registra textarea { display: none; }
+footer.registra #allega, footer.registra #agenti { display: none; }
+#reg .punto { width: 10px; height: 10px; border-radius: 50%; background: #ff3b30; animation: b 1s infinite; }
+#reg .annulla { margin-left: auto; color: #ff3b30; font-size: 16px; padding: 0 8px; min-height: 32px; display: none; }
+#scorri { margin-left: auto; margin-right: 6px; color: var(--tenue); font-size: 15px; white-space: nowrap; transition: opacity .1s; }
+footer.bloccato #scorri { display: none; }
+footer.bloccato #reg .annulla { display: block; }
+/* Lucchetto sopra il 🎤 mentre tieni premuto: scorri in su fin lì per bloccare il vocale */
+#lucchetto { position: absolute; right: 10px; bottom: calc(100% + 10px); width: 40px; padding: 8px 0; display: none;
+  flex-direction: column; align-items: center; gap: 2px; border-radius: 20px; background: var(--carta);
+  border: .5px solid var(--bordo); color: var(--tenue); box-shadow: 0 6px 20px rgba(0,0,0,.25); }
+#lucchetto svg { width: 20px; height: 20px; }
+footer.registra:not(.bloccato) #lucchetto { display: flex; }
+#invia.rec { background: #ff3b30; color: #fff; transform: scale(1.35); transition: transform .12s; }
+#invia { touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+#campanella.attiva { color: var(--tenue); }
+.avviso { position: fixed; left: 16px; right: 16px; top: calc(env(safe-area-inset-top) + 64px); z-index: 9; padding: 12px 14px;
+  border-radius: 14px; background: var(--testo); color: var(--sfondo); font-size: 15px; box-shadow: 0 8px 30px rgba(0,0,0,.3); }
+#accesso { position: fixed; inset: 0; background: var(--sfondo); display: none; flex-direction: column;
+  align-items: center; justify-content: center; gap: 14px; padding: 24px; text-align: center; }
+#accesso.su { display: flex; }
+#accesso input { width: 100%; max-width: 340px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--bordo);
+  background: var(--carta); color: var(--testo); font-size: 16px; }
+#accesso button { background: var(--mio); color: #fff; padding: 11px 26px; border-radius: 12px; font-weight: 600; }
+#accesso p { color: var(--tenue); margin: 0; max-width: 340px; font-size: 14px; }
+.vuoto { min-height: 100%; display: flex; flex-direction: column; justify-content: center; text-align: center;
+  color: var(--tenue); padding: 0 12px 6vh; }
+.vuoto .grande { display: grid; place-items: center; margin-bottom: 14px; }
+.vuoto .esempi { display: flex; flex-direction: column; gap: 8px; margin-top: 18px; align-items: center; }
+.vuoto .esempi button { background: var(--carta); border: 1px solid var(--bordo); padding: 8px 14px; border-radius: 14px;
+  color: var(--testo); font-size: 15px; }
+</style>
+</head>
+<body>
+<header>
+  <span id="testa"></span>
+  <h1><span id="nome">Daneel</span> <span class="stato" id="stato">pronto</span></h1>
+  <button class="icona" id="campanella" aria-label="Notifiche"></button>
+  <button class="icona" id="nuova" title="Nuova chat" aria-label="Nuova chat">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+  </button>
+</header>
+<main id="chat"></main>
+<div id="velo"></div>
+<footer>
+  <div id="tendina" role="menu" aria-label="Con chi vuoi parlare"><div class="titolo">Con chi vuoi parlare?</div></div>
+  <div id="lucchetto" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px"><path d="m6 15 6-6 6 6"/></svg></div>
+  <div id="via"></div>
+  <div id="anteprime"></div>
+  <div class="barra">
+    <button class="icona" id="agenti" aria-label="Scegli con chi parlare" aria-haspopup="menu"><span class="mini"></span></button>
+    <!-- Il campo file sta, invisibile, proprio sopra la fotocamera: si tocca lui, e iOS apre il suo menu
+         (Libreria foto, Scatta foto…) da lì invece che da un punto a caso dello schermo. -->
+    <span class="icona" id="allega">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      <input type="file" id="file" accept="image/*" multiple aria-label="Allega foto">
+    </span>
+    <div class="campo">
+      <!-- Campo modificabile invece di una textarea: iOS non ci mette sopra la barra dei moduli (˄ ˅ ✓). -->
+      <div id="testo" contenteditable="plaintext-only" role="textbox" aria-multiline="true" enterkeyhint="enter"
+           autocapitalize="sentences" spellcheck="true" data-placeholder="Scrivi a Daneel…"></div>
+      <div id="reg"><span class="punto"></span><span id="regTempo">0:00</span><span id="scorri">‹ scorri per annullare</span><button class="annulla" id="annulla">Annulla</button></div>
+      <button id="invia" aria-label="Invia" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+      </button>
+    </div>
+  </div>
+</footer>
+<iframe id="pagina" title="Plancia" allow="camera"></iframe>
+<nav id="schede" aria-label="Schede"><div class="pillola" role="tablist">
+  <button role="tab" data-scheda="chat" aria-selected="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1.1-4.6A8 8 0 1 1 21 12Z"/></svg>Chat</button>
+  <button role="tab" data-scheda="oggi" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>Oggi</button>
+  <button role="tab" data-scheda="salute" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8Z"/><path d="M3.5 12h4l2-3 3 6 2-3h6"/></svg>Salute</button>
+  <button role="tab" data-scheda="cibo" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M7 2v20M4 2v6a3 3 0 0 0 6 0V2M17 22V2c-2.2 1.4-3.5 4-3.5 7.5S15 14 17 14"/></svg>Cibo</button>
+  <button role="tab" data-scheda="soldi" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 7.5A7 7 0 1 0 18 16.5"/><path d="M4 10.5h10M4 13.5h10"/></svg>Soldi</button>
+</div></nav>
+<div id="accesso">
+  <span id="testaAccesso"></span>
+  <h2 style="margin:0">Daneel</h2>
+  <p>Incolla il codice di accesso (una volta sola: resta su questo iPhone).</p>
+  <input id="token" type="password" autocomplete="off" placeholder="Codice di accesso">
+  <button id="entra">Entra</button>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+const chat = $("#chat"), testo = $("#testo"), invia = $("#invia"), statoEl = $("#stato");
+let token = "";
+try { token = localStorage.getItem("daneel-token") || ""; } catch (e) {}
+let foto = [];          // [{blob, url}]
+let occupato = false;
+let bollaViva = null;   // {el, testo, chip}
+
+// Il campo è un div modificabile: `value` e `placeholder` lo fanno usare come la textarea di prima.
+Object.defineProperty(testo, "value", {
+  get() { return testo.innerText.replace(/\n$/, ""); },
+  set(v) { testo.textContent = v; },
+});
+Object.defineProperty(testo, "placeholder", { set(v) { testo.dataset.placeholder = v; } });
+
+// ---------- Altezza dello schermo e tastiera ----------
+// Su iPhone (app dalla schermata Home) la tastiera rimpicciolisce solo la parte visibile (visualViewport), non la
+// pagina: il corpo prende quell'altezza, e a tastiera aperta la barra non lascia lo spazio della barra Home.
+// Quando si tocca il campo iOS fa anche scorrere la parte visibile verso il basso (visualViewport.offsetTop):
+// il corpo la segue (top = offsetTop), così il campo resta appena sopra la tastiera e si vede cosa si scrive.
+function adatta() {
+  const vv = window.visualViewport, h = vv ? vv.height : innerHeight;
+  const inFondo = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 40;
+  const tastiera = !!vv && (screen.height - vv.height > 220 || innerHeight - vv.height > 120);
+  document.documentElement.style.setProperty("--alt", h + "px");
+  document.documentElement.style.setProperty("--su", (vv && tastiera ? Math.max(0, vv.offsetTop) : 0) + "px");
+  document.documentElement.classList.toggle("tastiera", tastiera);
+  if (!tastiera && scrollY) scrollTo(0, 0);
+  if (inFondo) requestAnimationFrame(() => { chat.scrollTop = chat.scrollHeight; });
+}
+if (window.visualViewport) { visualViewport.addEventListener("resize", adatta); visualViewport.addEventListener("scroll", adatta); }
+addEventListener("resize", adatta);
+adatta();
+
+// ---------- A chi Daneel affida le richieste: da sé (auto) o a un subagente scelto ----------
+// La chat è sempre una, quella di Daneel: il subagente scelto resta finché non si torna su Auto.
+const AGENTI = [
+  {id: "daneel", nome: "Auto", emoji: "🤖", ruolo: "Daneel decide da sé se e a chi delegare",
+   esempi: ["Cosa ho oggi in calendario?", "Cercami un cavo USB-C da 2 m su Amazon", "Come sono andato con le abitudini questa settimana?"]},
+  {id: "calendario", nome: "Calendario", emoji: "📅", ruolo: "Agenda: legge, crea e sposta gli eventi",
+   esempi: ["Cosa ho domani?", "Sposta la palestra di giovedì alle 17", "Quando sono libero questa settimana?"]},
+  {id: "postino", nome: "Postino", emoji: "✉️", ruolo: "Mail: riassunti, etichette e bozze (non invia)",
+   esempi: ["Riassumi le mail di oggi", "Ci sono risposte sul tirocinio?", "Prepara una bozza di risposta all'ultima mail"]},
+  {id: "nutrizionista", nome: "Nutrizionista", emoji: "🥗", ruolo: "Pasti: calorie e macro da foto o testo",
+   esempi: ["Quante proteine ha 150 g di petto di pollo?", "Ho mangiato pasta al tonno, 120 g: calcola", "Idee per una merenda da 30 g di proteine"]},
+  {id: "amanuense", nome: "Amanuense", emoji: "✍️", ruolo: "Trascrive foto di appunti scritti a mano",
+   esempi: ["Ti mando la foto di un esercizio da trascrivere", "Trascrivi questi appunti di Economia Aziendale"]},
+];
+let agente = "daneel";
+try { if (AGENTI.some(a => a.id === localStorage.getItem("daneel-agente"))) agente = localStorage.getItem("daneel-agente"); } catch (e) {}
+if (location.search) history.replaceState(null, "", location.pathname);   // aperta da una notifica
+const info = id => AGENTI.find(a => a.id === id) || AGENTI[0];
+
+// ---------- La mascotte ----------
+let piccolo = creaDaneel($("#testa"), {dimensione: 36});
+let mini = creaDaneel($("#agenti .mini"), {dimensione: 32, figura: agente});
+let grande = null, tUmore = null, tParla = null;
+function umoreBase() {   // dorme dalle 23:30 alle 7 (la regola del telefono alle 23)
+  const d = new Date(), m = d.getHours() * 60 + d.getMinutes();
+  if (m >= 23 * 60 + 30 || m < 7 * 60) return "dorme";
+  return document.activeElement === testo && testo.value.trim() ? "ascolta" : "calmo";
+}
+function umore(u, perMs) {
+  clearTimeout(tUmore);
+  piccolo.umore(u); mini.umore(u); if (grande && grande.svg.isConnected) grande.umore(u);
+  if (perMs) tUmore = setTimeout(() => { if (!occupato) umore(umoreBase()); }, perMs);
+}
+setInterval(() => { if (!occupato && ["calmo", "dorme"].includes(piccolo.stato)) umore(umoreBase()); }, 60000);
+
+// ---------- Markdown semplice e sicuro ----------
+function esc(s) { return s.replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function urlSicuro(u) { return /^https?:\/\//i.test(u) ? u.replace(/"/g, "%22") : null; }
+function inline(s) {
+  s = esc(s);
+  s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
+  s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (m, alt, u) => { u = urlSicuro(u.replace(/&amp;/g, "&")); return u ? `<img src="${u}" alt="${alt}" loading="lazy">` : ""; });
+  s = s.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, t, u) => { u = urlSicuro(u.replace(/&amp;/g, "&")); return u ? `<a href="${u}" target="_blank" rel="noopener">${t}</a>` : t; });
+  s = s.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, (m, p, u) => `${p}<a href="${u.replace(/&amp;/g, "&")}" target="_blank" rel="noopener">${u.length > 48 ? u.slice(0, 45) + "…" : u}</a>`);
+  s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>");
+  return s;
+}
+function md(t) {
+  const righe = t.replace(/\r/g, "").split("\n"); let out = "", lista = null, para = [], codice = null, tab = [];
+  const chiudiPara = () => { if (para.length) { out += "<p>" + para.map(inline).join("<br>") + "</p>"; para = []; } };
+  const chiudiLista = () => { if (lista) { out += `</${lista}>`; lista = null; } };
+  const chiudiTab = () => { if (tab.length) { out += "<table>" + tab.filter(r => !/^\s*\|?\s*:?-+/.test(r)).map(r =>
+      "<tr>" + r.replace(/^\s*\||\|\s*$/g, "").split("|").map(c => `<td>${inline(c.trim())}</td>`).join("") + "</tr>").join("") + "</table>"; tab = []; } };
+  for (const r of righe) {
+    if (codice !== null) { if (/^```/.test(r)) { out += `<pre><code>${esc(codice)}</code></pre>`; codice = null; } else codice += (codice ? "\n" : "") + r; continue; }
+    if (/^```/.test(r)) { chiudiPara(); chiudiLista(); chiudiTab(); codice = ""; continue; }
+    if (/^\s*\|.*\|\s*$/.test(r)) { chiudiPara(); chiudiLista(); tab.push(r); continue; } else chiudiTab();
+    let m;
+    if ((m = r.match(/^#{1,6}\s+(.*)/))) { chiudiPara(); chiudiLista(); out += `<h4>${inline(m[1])}</h4>`; continue; }
+    if ((m = r.match(/^\s*[-*•]\s+(.*)/)) || (m = r.match(/^\s*\d+[.)]\s+(.*)/))) {
+      const tipo = /^\s*\d/.test(r) ? "ol" : "ul"; chiudiPara();
+      if (lista !== tipo) { chiudiLista(); out += `<${tipo}>`; lista = tipo; }
+      out += `<li>${inline(m[1])}</li>`; continue;
+    }
+    if (!r.trim()) { chiudiPara(); chiudiLista(); continue; }
+    if (lista && /^\s{2,}/.test(r)) { out = out.replace(/<\/li>$/, "<br>" + inline(r.trim()) + "</li>"); continue; }
+    chiudiLista(); para.push(r);
+  }
+  if (codice !== null) out += `<pre><code>${esc(codice)}</code></pre>`;
+  chiudiPara(); chiudiLista(); chiudiTab();
+  return out;
+}
+
+// ---------- Interfaccia ----------
+function giu() { chat.scrollTop = chat.scrollHeight; }
+function vuoto() {
+  const a = info(agente);
+  chat.innerHTML = `<div class="vuoto"><div class="grande"></div>
+    <div>Ciao Gabriele, cosa ti serve?${a.id === "daneel" ? "" : `<br>${a.emoji} Ci pensa il ${a.nome}.`}</div>
+    <div class="esempi">${a.esempi.map(e => `<button>${esc(e)}</button>`).join("")}</div></div>`;
+  chat.querySelectorAll(".esempi button").forEach(b => b.onclick = () => { testo.value = b.textContent; aggiornaInvia(); manda(); });
+  grande = creaDaneel(chat.querySelector(".grande"), {dimensione: 140, segui: true});
+  grande.umore(piccolo.stato);
+}
+function aggiungiMsg(m) {
+  if (chat.querySelector(".vuoto")) chat.innerHTML = "";
+  const d = document.createElement("div"); d.className = "msg " + m.ruolo;
+  if (m.ruolo === "daneel") d.innerHTML = md(m.testo);
+  else { d.textContent = (m.via ? info(m.via).emoji + " " : "") + (m.vocale ? "🎤 " : "") + (m.testo || ""); if (m.foto) { const s = document.createElement("span"); s.className = "foto-n"; s.textContent = `📷 ${m.foto} foto`; d.prepend(s); } }
+  chat.appendChild(d); return d;
+}
+function mostraStoria(msg) { chat.innerHTML = ""; if (!msg.length) return vuoto(); msg.forEach(aggiungiMsg); giu(); }
+function setStato(s) { statoEl.textContent = s; }
+function setOccupato(v) { occupato = v; aggiornaInvia(); setStato(v ? "sta pensando…" : "pronto"); if (v) umore("pensa"); }
+// Il tasto a destra: ↑ se c'è qualcosa da mandare, 🎤 se il campo è vuoto, ■ mentre registri.
+const SVG_SU = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>';
+const SVG_MIC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><path d="M12 17v4"/></svg>';
+const SVG_STOP = '<svg viewBox="0 0 24 24" style="width:14px;height:14px"><rect x="3" y="3" width="18" height="18" rx="3" fill="currentColor"/></svg>';
+function aggiornaInvia() {
+  const modo = reg ? (reg.bloccato ? "stop" : "rec") : (testo.value.trim() || foto.length) ? "su" : "mic";
+  if (invia.dataset.modo !== modo) {
+    invia.dataset.modo = modo; invia.className = modo === "su" ? "" : modo;
+    invia.innerHTML = {su: SVG_SU, mic: SVG_MIC, rec: SVG_MIC, stop: SVG_STOP}[modo];
+    invia.setAttribute("aria-label", {su: "Invia", mic: "Tieni premuto per un vocale", rec: "Rilascia per inviare", stop: "Invia il vocale"}[modo]);
+  }
+  invia.disabled = occupato && !reg;
+}
+
+function nuovaBolla() {
+  const chip = document.createElement("div"); chip.className = "attivita";
+  const el = document.createElement("div"); el.className = "msg daneel"; el.innerHTML = '<span class="pensa"><i></i><i></i><i></i></span>';
+  chat.append(chip, el); giu();
+  bollaViva = {el, chip, testo: ""};
+}
+function evento(ev) {
+  if (!bollaViva) nuovaBolla();
+  const b = bollaViva;
+  if (ev.tipo === "testo") {
+    umore("parla"); setStato("sta scrivendo…"); clearTimeout(tParla);
+    tParla = setTimeout(() => { if (occupato) umore("pensa"); }, 900);
+    b.testo += ev.testo; b.el.innerHTML = md(b.testo) || '<span class="pensa"><i></i><i></i><i></i></span>'; giu(); }
+  else if (ev.tipo === "strumento") { const c = document.createElement("span"); c.className = "chip"; c.textContent = "⚙︎ " + ev.nome; b.chip.appendChild(c); umore("pensa"); setStato(ev.nome + "…"); giu(); }
+  else if (ev.tipo === "trascritto") {   // il vocale è diventato testo: lo mostra nella bolla di Gabriele
+    const mie = chat.querySelectorAll(".msg.gabriele"), ult = mie[mie.length - 1];
+    if (ult) { const f = ult.querySelector(".foto-n"); ult.textContent = "🎤 " + ev.testo; if (f) ult.prepend(f); }
+    giu();
+  }
+  else if (ev.tipo === "errore") { b.errore = true; aggiungiMsg({ruolo: "errore", testo: ev.testo}); giu(); }
+  else if (ev.tipo === "fine") {
+    clearTimeout(tParla); if (!b.testo.trim()) b.el.remove(); bollaViva = null; setOccupato(false);
+    umore(b.errore ? "confuso" : "felice", b.errore ? 2500 : 1800);
+  }
+}
+async function leggiFlusso(risp) {
+  const r = risp.body.getReader(), dec = new TextDecoder(); let buf = "";
+  while (true) {
+    const {value, done} = await r.read(); if (done) break;
+    buf += dec.decode(value, {stream: true});
+    let i; while ((i = buf.indexOf("\n\n")) >= 0) {
+      const blocco = buf.slice(0, i); buf = buf.slice(i + 2);
+      for (const riga of blocco.split("\n")) if (riga.startsWith("data: ")) evento(JSON.parse(riga.slice(6)));
+    }
+  }
+}
+function api(percorso, opz = {}) {
+  return fetch(percorso, {...opz, headers: {...(opz.headers || {}), Authorization: "Bearer " + token}});
+}
+
+async function carica() {
+  let r;
+  try { r = await api("api/stato"); } catch (e) { setStato("server non raggiungibile (Tailscale acceso?)"); return; }
+  if (r.status === 401) { $("#accesso").classList.add("su"); return; }
+  const s = await r.json();
+  if (bollaViva) return;   // un flusso è già aperto
+  messaggiNoti = s.messaggi.length;
+  mostraStoria(s.messaggi);
+  if (s.in_corso) {        // la risposta è ancora in corso: ci si riattacca dall'inizio del turno
+    setOccupato(true); nuovaBolla();
+    try { const f = await api("api/segui"); if (f.ok) await leggiFlusso(f); } catch (e) {}
+    if (bollaViva) { bollaViva = null; setOccupato(false); carica(); }
+  }
+}
+
+async function manda(vocale) {
+  if (occupato) return;
+  const t = vocale ? "" : testo.value.trim(); if (!t && !foto.length && !vocale) return;
+  const fd = new FormData(); fd.append("testo", t); fd.append("agente", agente);
+  foto.forEach((f, i) => fd.append("foto", f.blob, `foto${i}.jpg`));
+  if (vocale) fd.append("audio", vocale.blob, "vocale" + vocale.est);
+  aggiungiMsg({ruolo: "gabriele", testo: vocale ? "…" : t, foto: foto.length, vocale: !!vocale, via: agente === "daneel" ? null : agente});
+  testo.value = ""; foto = []; $("#anteprime").innerHTML = "";
+  setOccupato(true); nuovaBolla();
+  try {
+    const r = await api("api/messaggio", {method: "POST", body: fd});
+    if (!r.ok) { evento({tipo: "errore", testo: (await r.json().catch(() => ({}))).detail || "Errore " + r.status}); evento({tipo: "fine"}); return; }
+    await leggiFlusso(r);
+  } catch (e) {
+    // connessione persa (app in background): la risposta continua sul server, la riprendiamo al ritorno
+    setStato("ricollego…");
+  }
+  if (bollaViva) { bollaViva = null; setOccupato(false); carica(); }
+}
+
+// Riduce le foto a 1600 px in JPEG, così il caricamento è veloce.
+function riduci(file) {
+  return new Promise(res => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const s = Math.min(1, 1600 / Math.max(img.width, img.height)), c = document.createElement("canvas");
+      c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      c.toBlob(b => res({blob: b, url}), "image/jpeg", 0.85);
+    };
+    img.onerror = () => res({blob: file, url});
+    img.src = url;
+  });
+}
+$("#file").onchange = async e => {
+  for (const f of [...e.target.files].slice(0, 6 - foto.length)) {
+    const r = await riduci(f); foto.push(r);
+    const d = document.createElement("div"), x = document.createElement("button");
+    d.innerHTML = `<img src="${r.url}" alt="">`; x.textContent = "×";
+    x.onclick = () => { foto = foto.filter(q => q !== r); d.remove(); aggiornaInvia(); };
+    d.appendChild(x); $("#anteprime").appendChild(d);
+  }
+  e.target.value = ""; aggiornaInvia();
+};
+testo.addEventListener("focus", () => { if (!occupato) umore(umoreBase()); });
+testo.addEventListener("blur", () => { if (!occupato) umore(umoreBase()); });
+testo.addEventListener("input", () => {
+  if (!testo.innerText.trim() && testo.innerHTML) testo.innerHTML = "";   // via il <br> che resta: torna il segnaposto
+  if (!occupato) umore(umoreBase()); aggiornaInvia();
+});
+testo.addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey && !("ontouchstart" in window)) { e.preventDefault(); manda(); } });
+invia.onclick = () => invia.dataset.modo === "stop" ? fermaRegistrazione(true) : invia.dataset.modo === "su" ? manda() : null;
+
+// ---------- Vocale come su WhatsApp ----------
+// Tieni premuto 🎤 e parla; rilasci e parte. Scorri a sinistra per annullare, in su per bloccarlo (mani libere,
+// poi ■ per inviare). Un tocco breve non registra niente. Lo trascrive Whisper sul server.
+var reg = null;   // {rec, pezzi, flusso, inizio, timer, est, bloccato} (var: serve già ad aggiornaInvia)
+let dito = null;  // {x, y, id} mentre il dito è sul 🎤
+const ANNULLA_DX = 90, BLOCCA_DY = 70;   // px da scorrere
+
+async function registra() {
+  if (occupato || reg) return;
+  let flusso;
+  try { flusso = await navigator.mediaDevices.getUserMedia({audio: true}); }
+  catch (e) { avviso("Per i vocali serve il permesso del microfono: Impostazioni → Daneel (o Safari) → Microfono."); return; }
+  if (!dito) {   // il dito si è alzato mentre iOS chiedeva il permesso: non si registra niente
+    flusso.getTracks().forEach(t => t.stop());
+    avviso("Tieni premuto 🎤 per registrare, rilascia per inviare."); return;
+  }
+  const tipo = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"].find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || "";
+  const rec = new MediaRecorder(flusso, tipo ? {mimeType: tipo} : undefined);
+  reg = {rec, flusso, pezzi: [], inizio: Date.now(), est: tipo.includes("webm") ? ".webm" : ".m4a", bloccato: false};
+  rec.ondataavailable = e => { if (e.data.size && reg) reg.pezzi.push(e.data); };
+  rec.start(250);
+  testo.blur(); $("footer").classList.add("registra"); $("footer").classList.remove("bloccato");
+  aggiornaInvia(); umore("ascolta"); setStato("ti ascolto…");
+  const tick = () => {
+    if (!reg) return;
+    const s = Math.floor((Date.now() - reg.inizio) / 1000);
+    $("#regTempo").textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+    if (s >= 180) fermaRegistrazione(true);   // massimo 3 minuti
+  };
+  tick(); reg.timer = setInterval(tick, 250);
+}
+function fermaRegistrazione(invia) {
+  if (!reg) return;
+  const r = reg; reg = null; clearInterval(r.timer);
+  r.rec.onstop = () => {
+    r.flusso.getTracks().forEach(t => t.stop());
+    const blob = new Blob(r.pezzi, {type: r.rec.mimeType || "audio/mp4"});
+    if (invia && blob.size > 2000 && Date.now() - r.inizio > 700) manda({blob, est: r.est});
+    else if (invia) avviso("Vocale troppo corto: tieni premuto 🎤 mentre parli.");
+  };
+  r.rec.stop();
+  $("footer").classList.remove("registra", "bloccato"); $("#scorri").style.transform = "";
+  aggiornaInvia(); setStato("pronto"); umore(umoreBase());
+}
+$("#annulla").onclick = () => fermaRegistrazione(false);
+
+invia.addEventListener("pointerdown", e => {
+  if (invia.dataset.modo !== "mic" || occupato) return;
+  e.preventDefault();
+  try { invia.setPointerCapture(e.pointerId); } catch (err) {}
+  dito = {x: e.clientX, y: e.clientY, id: e.pointerId, t: Date.now()};
+  registra();
+});
+invia.addEventListener("pointermove", e => {
+  if (!dito || e.pointerId !== dito.id || !reg || reg.bloccato) return;
+  const dx = Math.min(0, e.clientX - dito.x), dy = Math.min(0, e.clientY - dito.y);
+  $("#scorri").style.transform = `translateX(${dx}px)`;
+  $("#scorri").style.opacity = String(1 - Math.min(1, -dx / ANNULLA_DX) * .6);
+  $("#lucchetto").style.transform = `translateY(${Math.max(dy, -BLOCCA_DY) * .5}px)`;
+  if (-dx > ANNULLA_DX) { dito = null; fermaRegistrazione(false); avviso("Vocale annullato 🗑️"); }
+  else if (-dy > BLOCCA_DY) {   // bloccato: si può staccare il dito, poi ■ per inviare o Annulla
+    reg.bloccato = true; $("footer").classList.add("bloccato"); $("#lucchetto").style.transform = "";
+    $("#scorri").style.transform = ""; aggiornaInvia();
+  }
+});
+function dito_su(e) {
+  if (!dito || (e && e.pointerId !== dito.id)) return;
+  const breve = Date.now() - dito.t < 350;
+  dito = null;
+  $("#lucchetto").style.transform = "";
+  if (!reg) { if (breve) avviso("Tieni premuto 🎤 per registrare, rilascia per inviare."); return; }
+  if (reg.bloccato) return;
+  if (breve) { fermaRegistrazione(false); avviso("Tieni premuto 🎤 per registrare, rilascia per inviare."); return; }
+  fermaRegistrazione(true);
+}
+invia.addEventListener("pointerup", dito_su);
+invia.addEventListener("pointercancel", e => { if (dito && e.pointerId === dito.id) { dito = null; fermaRegistrazione(false); } });
+
+
+function avviso(t) {
+  const d = document.createElement("div"); d.className = "avviso"; d.textContent = t;
+  document.body.appendChild(d); setTimeout(() => d.remove(), 4500); d.onclick = () => d.remove();
+}
+
+// ---------- Notifiche push ----------
+// Su iPhone funzionano solo dall'app aggiunta alla schermata Home, e il permesso si chiede toccando la campanella.
+const SVG_CAMP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>';
+const campanella = $("#campanella");
+function disegnaCampanella(attive) {
+  campanella.classList.toggle("attiva", attive);
+  campanella.innerHTML = SVG_CAMP + (attive ? "" : '<path d="M3 3l18 18" stroke-width="2.2"/>') + "</svg>";
+  campanella.setAttribute("aria-label", attive ? "Notifiche attive: tocca per disattivarle" : "Attiva le notifiche");
+}
+function chiaveInByte(b64) {
+  const s = atob((b64 + "=".repeat((4 - b64.length % 4) % 4)).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(s, c => c.charCodeAt(0));
+}
+async function iscrizioneAttuale() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return null;
+  const r = await navigator.serviceWorker.ready;
+  return r.pushManager.getSubscription();
+}
+async function attivaNotifiche() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !window.Notification) {
+    avviso("Le notifiche funzionano solo dall'app aggiunta alla schermata Home (Condividi → Aggiungi alla schermata Home)."); return;
+  }
+  // La campanella è un interruttore: se le notifiche sono attive le spegne (qui e sul server), altrimenti le accende.
+  const esistente = await iscrizioneAttuale();
+  if (esistente && Notification.permission === "granted") {
+    await api("api/push/disiscrivi", {method: "POST", headers: {"Content-Type": "application/json"},
+                                      body: JSON.stringify({endpoint: esistente.endpoint})});
+    await esistente.unsubscribe().catch(() => {});
+    disegnaCampanella(false); avviso("Notifiche disattivate 🔕"); return;
+  }
+  const permesso = await Notification.requestPermission();
+  if (permesso !== "granted") { avviso("Notifiche non permesse: si riattivano da Impostazioni → Notifiche → Daneel."); return; }
+  const {chiave} = await (await api("api/push/chiave")).json();
+  const reg2 = await navigator.serviceWorker.ready;
+  const iscr = await reg2.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: chiaveInByte(chiave)});
+  await api("api/push/iscrivi", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(iscr.toJSON())});
+  disegnaCampanella(true); avviso("Notifiche attivate 🔔");
+}
+campanella.onclick = () => attivaNotifiche().catch(e => avviso("Notifiche: " + e.message));
+async function avviaNotifiche() {
+  disegnaCampanella(false);
+  if (!("serviceWorker" in navigator)) return;
+  try {
+    await navigator.serviceWorker.register("sw.js");
+    const iscr = await iscrizioneAttuale();
+    if (iscr && window.Notification && Notification.permission === "granted") {
+      disegnaCampanella(true);   // la ri-registra sul server, nel caso fosse stata tolta
+      api("api/push/iscrivi", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(iscr.toJSON())});
+    }
+  } catch (e) {}
+  navigator.serviceWorker.addEventListener("message", e => { if (e.data && e.data.tipo === "apri") { scheda("chat"); if (!bollaViva) carica(); } });
+}
+
+// L'app aperta lo dice al server ogni 15 s: se a fine risposta non c'è, arriva la notifica.
+// Nello stesso giro guarda se è arrivato qualcosa da solo (un timer, un avviso) e in quel caso ricarica la chat.
+let messaggiNoti = -1;
+function segnalaVisibile() {
+  if (document.hidden || !token) return;
+  const fd = new FormData(); fd.append("stato", "si");
+  api("api/visibile", {method: "POST", body: fd}).catch(() => {});
+  if (navigator.clearAppBadge) navigator.clearAppBadge().catch(() => {});
+  if (occupato || bollaViva || reg) return;
+  api("api/stato").then(r => r.ok ? r.json() : null).then(s => {
+    if (s && !bollaViva && !occupato && (s.in_corso || s.messaggi.length !== messaggiNoti)) carica();
+  }).catch(() => {});
+}
+setInterval(segnalaVisibile, 15000);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    if (reg) fermaRegistrazione(false);
+    const fd = new FormData(); fd.append("token", token); fd.append("stato", "no");
+    try { navigator.sendBeacon("api/visibile", fd); } catch (e) {}
+  } else segnalaVisibile();
+});
+$("#nuova").onclick = async () => {
+  if (occupato) return;
+  if (!chat.querySelector(".msg")) return;
+  const r = await api("api/nuova", {method: "POST"}); if (r.ok) vuoto();
+};
+
+// Tendina: una voce per agente, con la sua mascotte. Scegliere non cambia chat: dice a Daneel a chi affidare.
+const tendina = $("#tendina"), velo = $("#velo");
+AGENTI.forEach(a => {
+  const v = document.createElement("button");
+  v.className = "voce"; v.dataset.id = a.id; v.setAttribute("role", "menuitem");
+  v.innerHTML = `<span class="av"></span><span><b>${a.emoji} ${a.nome}</b><small>${esc(a.ruolo)}</small></span><span class="spunta">✓</span>`;
+  creaDaneel(v.querySelector(".av"), {dimensione: 44, figura: a.id});
+  v.onclick = () => { chiudiTendina(); scegli(a.id); };
+  tendina.appendChild(v);
+});
+function apriTendina() {
+  tendina.querySelectorAll(".voce").forEach(v => v.classList.toggle("scelto", v.dataset.id === agente));
+  tendina.classList.add("su"); velo.classList.add("su"); testo.blur();
+}
+function chiudiTendina() { tendina.classList.remove("su"); velo.classList.remove("su"); }
+$("#agenti").onclick = () => tendina.classList.contains("su") ? chiudiTendina() : apriTendina();
+velo.onclick = chiudiTendina;
+function mostraAgente() {
+  const a = info(agente);
+  testo.placeholder = "Scrivi a Daneel…";
+  $("#agenti .mini").innerHTML = ""; mini = creaDaneel($("#agenti .mini"), {dimensione: 32, figura: agente});
+  // etichetta sopra il campo: a chi va il prossimo messaggio, con la ✕ per tornare su Auto
+  $("#via").classList.toggle("su", a.id !== "daneel");
+  $("#via").innerHTML = a.id === "daneel" ? "" : `${a.emoji} Daneel lo affida al <b>${a.nome}</b> <button aria-label="Torna su Auto">✕</button>`;
+  const x = $("#via button"); if (x) x.onclick = () => scegli("daneel");
+  umore(umoreBase());
+}
+function scegli(id) {
+  if (id === agente) return;
+  agente = id;
+  try { localStorage.setItem("daneel-agente", id); } catch (e) {}
+  mostraAgente();
+  if (chat.querySelector(".vuoto")) vuoto();   // gli esempi cambiano col subagente
+}
+mostraAgente();
+$("#entra").onclick = () => {
+  token = $("#token").value.trim(); if (!token) return;
+  try { localStorage.setItem("daneel-token", token); } catch (e) {}
+  $("#accesso").classList.remove("su"); carica();
+};
+document.addEventListener("visibilitychange", () => { if (!document.hidden && !bollaViva) carica(); });
+// ---------- Barra delle schede ----------
+// Chat è la pagina di sempre; Oggi, Salute, Cibo e Soldi sono viste della Plancia nello stesso iframe.
+const pagina = $("#pagina");
+function scheda(id) {
+  document.querySelectorAll("#schede button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.scheda === id)));
+  document.documentElement.classList.toggle("plancia", id !== "chat");
+  if (id !== "chat") {
+    if (!pagina.src) pagina.src = "plancia.html#" + id;
+    else if (pagina.contentWindow) pagina.contentWindow.location.hash = id;
+    testo.blur();
+  } else requestAnimationFrame(giu);
+  try { localStorage.setItem("daneel-scheda", id); } catch (e) {}
+}
+document.querySelectorAll("#schede button").forEach(b => b.onclick = () => scheda(b.dataset.scheda));
+// La Plancia chiede di scrivere a Daneel (scheda Cibo, "Descrivi a Daneel"): si va in chat con il testo pronto.
+addEventListener("message", e => {
+  if (e.origin !== location.origin || !e.data || e.data.tipo !== "scrivi") return;
+  scheda("chat"); testo.value = e.data.testo || ""; aggiornaInvia(); testo.focus();
+  const r = document.createRange(); r.selectNodeContents(testo); r.collapse(false);
+  const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+});
+{ let s0 = "chat"; try { s0 = localStorage.getItem("daneel-scheda") || "chat"; } catch (e) {}
+  if (location.search) s0 = "chat";   // aperta da una notifica: si va alla chat
+  scheda(["chat", "oggi", "salute", "cibo", "soldi"].includes(s0) ? s0 : "chat"); }
+
+creaDaneel($("#testaAccesso"), {dimensione: 110, segui: true});
+umore(umoreBase());
+avviaNotifiche(); aggiornaInvia();
+carica();
+</script>
+</body>
+</html>

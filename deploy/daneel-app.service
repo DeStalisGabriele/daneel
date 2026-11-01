@@ -1,0 +1,12 @@
+[Unit]
+Description=Daneel app per iPhone (PWA, chat con Claude Code sul piano, porta 8791 locale, HTTPS via tailscale serve sulla 8444)
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/opt/daneel-app
+ExecStart=%h/opt/daneel-app/.venv/bin/uvicorn server:app --host 127.0.0.1 --port 8791 --log-level warning
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

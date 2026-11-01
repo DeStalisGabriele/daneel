@@ -1,0 +1,11 @@
+#!/bin/bash
+# Uso: avvisa-gabriele "testo" — un avviso già scritto: va nella chat dell'app Daneel e arriva come notifica.
+# Se l'app non risponde, ripiega su Telegram (promemoria-telegram.sh), così l'avviso non si perde.
+T=$(cat ~/.config/daneel-app/token 2>/dev/null)
+corpo=$(python3 -c 'import json,sys; print(json.dumps({"testo": sys.argv[1]}))' "$1")
+if curl -sf -m 30 -o /dev/null -H "Authorization: Bearer $T" -H "Content-Type: application/json" \
+     -d "$corpo" http://127.0.0.1:8791/api/avviso; then
+  echo ok
+else
+  exec ~/bin/promemoria-telegram.sh "$1"
+fi

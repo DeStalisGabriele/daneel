@@ -1,0 +1,577 @@
+"""Daneel come app per iPhone (PWA): una chat che parla con Claude Code su questo server, sul piano di Gabriele.
+
+Ogni messaggio lancia `claude -p` nella cartella della memoria (~/claude-mind), riprendendo la stessa sessione
+(--resume), quindi valgono CLAUDE.md, le skill e i subagenti di Daneel. Niente chiave API: conta sui limiti del piano.
+Il turno gira in background: se l'app va in secondo piano a metà, la risposta si salva lo stesso e l'app la
+ritrova alla riapertura (/api/stato, /api/segui).
+
+Avvio: .venv/bin/uvicorn server:app --host 127.0.0.1 --port 8791 (servizio utente daneel-app); lo espone
+solo `tailscale serve` in HTTPS sulla tailnet: https://<server>.<tailnet>.ts.net:8444
+Il token sta in ~/.config/daneel-app/token; l'app lo chiede la prima volta e lo tiene sul telefono.
+"""
+
+import asyncio
+import hmac
+import json
+import logging
+import os
+import re
+import secrets
+import time
+from pathlib import Path
+
+from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
+
+import cibo
+import plancia
+
+HOME = Path.home()
+QUI = Path(__file__).resolve().parent
+# Cartelle di dati e configurazione: si possono cambiare con le variabili d'ambiente (la demo degli screenshot
+# gira con cartelle sue, così non tocca i dati veri).
+DATI = Path(os.environ.get("DANEEL_DATI", HOME / ".local/share/daneel-app"))
+CONFIG = Path(os.environ.get("DANEEL_CONFIG", HOME / ".config/daneel-app"))
+FOTO = HOME / "tmp/app-foto"
+TOKEN_FILE = CONFIG / "token"
+CLAUDE = HOME / ".local/bin/claude"
+MAX_FOTO = 8 * 1024 * 1024  # byte per foto
+AUDIO = HOME / "tmp/app-vocali"
+MAX_AUDIO = 20 * 1024 * 1024  # byte per vocale (qualche minuto)
+TIMEOUT = 15 * 60  # secondi massimi per un turno
+ISCRIZIONI = DATI / "iscrizioni.json"  # i telefoni iscritti alle notifiche (Web Push)
+VAPID_PEM = CONFIG / "vapid.pem"
+VAPID_PUB = CONFIG / "vapid-pubblica.txt"
+# chi manda le notifiche: un URL https senza porta (lo vuole py_vapid), per esempio l'indirizzo del server sulla tailnet
+VAPID_SUB = os.environ.get("DANEEL_VAPID_SUB", "https://github.com/DeStalisGabriele/daneel")
+VISIBILE_PER = 25  # secondi: se l'app non dà segni di vita da più di così, a fine risposta parte la notifica
+EMOJI = {"daneel": "🤖", "calendario": "📅", "postino": "✉️", "nutrizionista": "🥗", "amanuense": "✍️"}
+
+SISTEMA = """Stai parlando con Gabriele dall'app "Daneel" sul suo iPhone, non da Telegram.
+- Rispondi direttamente nel testo, in italiano, con Markdown semplice (grassetto, elenchi, link). Non usare il tool \
+reply di Telegram né react: quando una skill dice "manda su Telegram" o "reply", qui vuol dire scriverlo nella risposta.
+- Le foto che Gabriele allega arrivano come percorsi locali nel messaggio: leggile con Read (non serve download_attachment).
+- Per mostrare un'immagine che sta sul web (per esempio la foto di un prodotto Amazon, il campo `immagine`) scrivi \
+![nome](https://…): l'app la mostra. Non usare percorsi locali nelle immagini.
+- **Ogni risposta ha qualche emoji** (richiesta di Gabriele): di solito 1-3 per messaggio, per esempio all'inizio, \
+accanto a un risultato o a un elenco; mai una per riga e mai al posto delle parole. Anche le risposte brevi.
+- La Plancia sta su questo server (pagina plancia.html dell'app): leggila e scrivila con `~/bin/plancia-db` \
+(`get`, `list`, `set`, `update`, `agenda`; `~/bin/plancia-db --help`), come dicono le skill.
+- Le altre regole di CLAUDE.md valgono come sempre (bozze da approvare prima di inviare, subagenti, memoria)."""
+
+# Il menu dell'app: "daneel" è l'automatico (Daneel decide da sé se e a chi delegare); scegliere un subagente non
+# apre un'altra chat: nella stessa conversazione Daneel affida a lui le richieste (NOTA_SUB in fondo al messaggio).
+# Redattore e Cacciatore di slide restano dentro /lezione.
+AGENTI = ("daneel", "calendario", "postino", "nutrizionista", "amanuense")
+NOTA_SUB = ("\n\n[Dal menu dell'app Gabriele ha scelto il subagente `{0}`: affida a lui questa richiesta (strumento "
+            "Agent/Task, subagent_type `{0}`) e riporta il suo risultato. Se la richiesta non c'entra con il suo ruolo, "
+            "fai tu e diglielo in una riga.]")
+
+log = logging.getLogger("daneel-app")
+app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+
+
+def _token() -> str:
+    if not TOKEN_FILE.exists():
+        TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
+        TOKEN_FILE.write_text(secrets.token_urlsafe(24))
+        TOKEN_FILE.chmod(0o600)
+    return TOKEN_FILE.read_text().strip()
+
+
+def _controlla(authorization: str | None):
+    atteso = "Bearer " + _token()
+    if not authorization or not hmac.compare_digest(authorization, atteso):
+        raise HTTPException(401, "token mancante o sbagliato")
+
+
+def _agente(nome: str | None) -> str:
+    nome = (nome or "daneel").strip().lower()
+    if nome not in AGENTI:
+        raise HTTPException(400, "agente sconosciuto")
+    return nome
+
+
+def _file_storia(agente: str) -> Path:
+    return DATI / ("chat.json" if agente == "daneel" else f"chat-{agente}.json")
+
+
+def _leggi_storia(agente: str) -> dict:
+    try:
+        return json.loads(_file_storia(agente).read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {"sessione": None, "messaggi": []}
+
+
+def _scrivi_storia(agente: str, s: dict):
+    DATI.mkdir(parents=True, exist_ok=True)
+    f = _file_storia(agente)
+    tmp = f.with_suffix(".tmp")
+    tmp.write_text(json.dumps(s, ensure_ascii=False, indent=1))
+    tmp.replace(f)
+
+
+_NOMI_STRUMENTI = {
+    "Bash": "comando sul server", "Read": "leggo un file", "Edit": "modifico un file", "Write": "scrivo un file",
+    "Grep": "cerco nei file", "Glob": "cerco file", "WebSearch": "cerco sul web", "WebFetch": "leggo una pagina web",
+    "Task": "chiedo a un subagente", "Agent": "chiedo a un subagente", "Skill": "uso una skill",
+}
+
+
+def _nome_strumento(nome: str, input_: dict) -> str:
+    if nome == "Bash" and "amazon-cerca" in str(input_.get("command", "")):
+        return "cerco su Amazon"
+    if nome == "Skill" and input_.get("skill"):
+        return f"skill {input_['skill']}"
+    if nome in ("Task", "Agent") and input_.get("subagent_type"):
+        return f"chiedo al {input_['subagent_type']}"
+    if nome.startswith("mcp__"):
+        servizio = nome.split("__")[1].replace("claude_ai_", "").replace("_", " ")
+        return f"{servizio}: {nome.split('__')[-1].replace('_', ' ')}"
+    return _NOMI_STRUMENTI.get(nome, nome)
+
+
+class Turno:
+    """Un messaggio di Gabriele e la risposta che si sta scrivendo. Gli eventi restano qui finché il turno è
+    vivo, così chi si ricollega li riceve tutti dall'inizio."""
+
+    def __init__(self, testo: str, agente: str):
+        self.testo = testo
+        self.agente = agente
+        self.timer = False  # True se il turno l'ha avviato un timer (/api/sistema)
+        self.eventi: list[dict] = []
+        self.fatto = False
+        self.cambiato = asyncio.Condition()
+        self.inizio = time.time()
+
+    async def aggiungi(self, ev: dict):
+        async with self.cambiato:
+            self.eventi.append(ev)
+            self.cambiato.notify_all()
+
+    async def segui(self):
+        i = 0
+        while True:
+            async with self.cambiato:
+                while i >= len(self.eventi) and not self.fatto:
+                    try:
+                        await asyncio.wait_for(self.cambiato.wait(), 15)
+                    except asyncio.TimeoutError:
+                        break
+                nuovi, i = self.eventi[i:], len(self.eventi)
+                finito = self.fatto and not nuovi
+            if not nuovi and not finito:
+                yield ": ping\n\n"  # tiene viva la connessione
+            for ev in nuovi:
+                yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+            if finito:
+                return
+
+
+turno: Turno | None = None
+_lucchetto = asyncio.Lock()
+_ultimo_visibile = 0.0  # quando l'app aperta in primo piano si è fatta sentire l'ultima volta
+
+
+# ---------- Notifiche push (Web Push: su iPhone funzionano per le app aggiunte alla schermata Home) ----------
+
+def _leggi_iscrizioni() -> list[dict]:
+    try:
+        return json.loads(ISCRIZIONI.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
+
+
+def _manda_push(dati: dict) -> int:
+    """Manda la notifica a ogni telefono iscritto; toglie le iscrizioni che il servizio di Apple dà per scadute.
+    Sincrona (pywebpush usa requests): chiamarla con asyncio.to_thread."""
+    from pywebpush import WebPushException, webpush
+    iscrizioni, tenute, mandate = _leggi_iscrizioni(), [], 0
+    for s in iscrizioni:
+        try:
+            webpush(s, json.dumps(dati, ensure_ascii=False), vapid_private_key=str(VAPID_PEM),
+                    vapid_claims={"sub": VAPID_SUB}, ttl=3600, timeout=15)
+            mandate += 1
+            tenute.append(s)
+        except WebPushException as ex:
+            stato = ex.response.status_code if ex.response is not None else None
+            if stato not in (404, 410):  # 404/410: iscrizione morta (app tolta, permesso revocato)
+                tenute.append(s)
+            log.warning("push fallita (%s): %s", stato, ex)
+    if len(tenute) != len(iscrizioni):
+        ISCRIZIONI.write_text(json.dumps(tenute))
+    return mandate
+
+
+def _testo_notifica(testo: str, massimo: int = 600) -> str:
+    """La risposta come testo semplice per la notifica: niente Markdown, immagini e link, gli a capo restano
+    (iOS li mostra; la notifica aperta col dito fa vedere tutto)."""
+    t = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", testo)                 # immagini
+    t = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", t)               # [testo](link) -> testo
+    t = re.sub(r"https?://\S+", "", t)                              # link nudi
+    t = re.sub(r"[*_`#>|]", "", t)
+    righe = []
+    for r in t.splitlines():
+        r = re.sub(r"^\s*[-•]\s+", "• ", r).strip()
+        r = re.sub(r"\s{2,}", " ", r)
+        if r and not re.fullmatch(r"[-:• ]+", r):
+            righe.append(r)
+    t = "\n".join(righe)
+    return t if len(t) <= massimo else t[:massimo - 1].rstrip() + "…"
+
+
+async def notifica(titolo: str, testo: str, agente: str = "daneel"):
+    """Senza titolo iOS scriverebbe "Daneel" accanto all'icona, e Gabriele non lo vuole: il titolo diventa la prima
+    riga della risposta e il corpo il resto. L'anteprima corta e l'espansione col dito le fa iOS da sé."""
+    if not _leggi_iscrizioni():
+        return 0
+    pulito = _testo_notifica(testo)
+    if not titolo:
+        titolo, _, pulito = pulito.partition("\n")
+        if len(titolo) > 70:   # prima riga lunga: il titolo è il suo inizio, il resto va nel corpo
+            taglio = titolo.rfind(" ", 0, 60)
+            taglio = taglio if taglio > 20 else 60
+            titolo, pulito = titolo[:taglio].rstrip(" ,;:") + "…", "…" + titolo[taglio:].lstrip() + ("\n" + pulito if pulito else "")
+    return await asyncio.to_thread(_manda_push, {"titolo": titolo, "testo": pulito, "agente": agente})
+
+
+async def _trascrivi(audio: Path) -> str:
+    """Il vocale registrato dall'app, con lo stesso Whisper dei vocali di Telegram (~/bin/trascrivi, sulla GPU)."""
+    proc = await asyncio.create_subprocess_exec(str(HOME / "bin/trascrivi"), str(audio), stdin=asyncio.subprocess.DEVNULL,
+                                                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+    out, _ = await asyncio.wait_for(proc.communicate(), 180)
+    return out.decode(errors="replace").strip()
+
+
+async def _esegui(t: Turno, prompt: str, audio: Path | None = None):
+    if audio:  # prima il vocale diventa testo, poi il turno va avanti come un messaggio scritto
+        await t.aggiungi({"tipo": "strumento", "nome": "trascrivo il vocale"})
+        try:
+            detto = await _trascrivi(audio)
+        except Exception:  # noqa: BLE001
+            log.exception("trascrizione fallita")
+            detto = ""
+        storia = _leggi_storia(t.agente)
+        for m in reversed(storia["messaggi"]):
+            if m["ruolo"] == "gabriele":
+                m["testo"] = detto or "(vocale non capito)"
+                break
+        if not detto:
+            storia["messaggi"].append({"ruolo": "errore", "testo": "Non ho capito il vocale: riprova.", "ts": time.time()})
+            _scrivi_storia(t.agente, storia)
+            await t.aggiungi({"tipo": "errore", "testo": "Non ho capito il vocale: riprova."})
+            await t.aggiungi({"tipo": "fine"})
+            async with t.cambiato:
+                t.fatto = True
+                t.cambiato.notify_all()
+            return
+        _scrivi_storia(t.agente, storia)
+        await t.aggiungi({"tipo": "trascritto", "testo": detto})
+        prompt = detto + prompt  # prompt qui ha solo le eventuali foto e la nota del subagente scelto
+    storia = _leggi_storia(t.agente)
+    cmd = [str(CLAUDE), "-p", prompt, "--output-format", "stream-json", "--verbose", "--include-partial-messages",
+           "--settings", str(HOME / ".claude/app-settings.json"),
+           "--append-system-prompt", SISTEMA + (SISTEMA_TIMER if t.timer else "")]
+    if storia.get("sessione"):
+        cmd += ["--resume", storia["sessione"]]
+    env = {**os.environ, "PATH": f"{HOME}/.local/bin:{HOME}/bin:{os.environ.get('PATH', '/usr/bin:/bin')}"}
+    risposta, sessione, errore = "", storia.get("sessione"), None
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, cwd=HOME / "claude-mind", env=env, stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, limit=16 * 1024 * 1024)
+        strumenti: dict[int, dict] = {}
+        async def leggi():
+            nonlocal risposta, sessione, errore
+            async for riga in proc.stdout:
+                try:
+                    m = json.loads(riga)
+                except json.JSONDecodeError:
+                    continue
+                sessione = m.get("session_id") or sessione
+                if m.get("type") == "stream_event" and not m.get("parent_tool_use_id"):
+                    e = m["event"]
+                    if e["type"] == "content_block_start" and e["content_block"]["type"] == "tool_use":
+                        strumenti[e["index"]] = {"nome": e["content_block"]["name"], "json": ""}
+                    elif e["type"] == "content_block_delta":
+                        d = e["delta"]
+                        if d["type"] == "text_delta":
+                            risposta += d["text"]
+                            await t.aggiungi({"tipo": "testo", "testo": d["text"]})
+                        elif d["type"] == "input_json_delta" and e["index"] in strumenti:
+                            strumenti[e["index"]]["json"] += d["partial_json"]
+                    elif e["type"] == "content_block_stop" and e["index"] in strumenti:
+                        s = strumenti.pop(e["index"])
+                        try:
+                            inp = json.loads(s["json"] or "{}")
+                        except json.JSONDecodeError:
+                            inp = {}
+                        await t.aggiungi({"tipo": "strumento", "nome": _nome_strumento(s["nome"], inp)})
+                    elif e["type"] == "message_start" and risposta and not risposta.endswith("\n\n"):
+                        risposta += "\n\n"  # un nuovo messaggio dopo gli strumenti: a capo
+                        await t.aggiungi({"tipo": "testo", "testo": "\n\n"})
+                elif m.get("type") == "result" and m.get("is_error"):
+                    errore = m.get("result") or "errore di Claude"
+                elif m.get("type") == "rate_limit_event":
+                    info = m.get("rate_limit_info", {})
+                    if info.get("status") not in ("allowed", "allowed_warning", None):
+                        errore = "Limite del piano raggiunto: riprova dopo il reset."
+        await asyncio.wait_for(leggi(), TIMEOUT)
+        await proc.wait()
+        if proc.returncode and not errore and not risposta:
+            errore = (await proc.stderr.read()).decode(errors="replace")[-500:] or f"claude è uscito con {proc.returncode}"
+    except asyncio.TimeoutError:
+        proc.kill()
+        errore = "Ci ho messo troppo e ho interrotto."
+    except Exception as ex:  # noqa: BLE001
+        log.exception("turno fallito")
+        errore = str(ex)
+
+    storia = _leggi_storia(t.agente)
+    storia["sessione"] = sessione
+    if risposta.strip():
+        storia["messaggi"].append({"ruolo": "daneel", "testo": risposta.strip(), "ts": time.time()})
+    if errore:
+        storia["messaggi"].append({"ruolo": "errore", "testo": errore, "ts": time.time()})
+        await t.aggiungi({"tipo": "errore", "testo": errore})
+    _scrivi_storia(t.agente, storia)
+    # Se intanto Gabriele ha chiuso l'app (o lo schermo è spento), lo avvisa con una notifica.
+    if time.time() - _ultimo_visibile > VISIBILE_PER and (risposta.strip() or errore):
+        try:
+            await notifica("", risposta.strip() or f"Errore: {errore}", t.agente)
+        except Exception:  # noqa: BLE001
+            log.exception("notifica non mandata")
+    await t.aggiungi({"tipo": "fine"})
+    async with t.cambiato:
+        t.fatto = True
+        t.cambiato.notify_all()
+
+
+@app.get("/api/stato")
+async def stato(agente: str = "daneel", authorization: str | None = Header(None)):
+    _controlla(authorization)
+    agente = _agente(agente)
+    s = _leggi_storia(agente)
+    vivo = turno is not None and not turno.fatto
+    # in_corso: la risposta che si sta scrivendo è in questa chat; occupato: è in un'altra (una alla volta)
+    return {"messaggi": s["messaggi"][-200:], "in_corso": vivo and turno.agente == agente,
+            "occupato": turno.agente if vivo and turno.agente != agente else None}
+
+
+@app.post("/api/messaggio")
+async def messaggio(testo: str = Form(""), agente: str = Form("daneel"), foto: list[UploadFile] = File(default=[]),
+                    audio: UploadFile | None = File(default=None), authorization: str | None = Header(None)):
+    global turno
+    _controlla(authorization)
+    via = _agente(agente)   # il subagente scelto dal menu ("daneel" = automatico)
+    agente = "daneel"       # la conversazione è sempre quella di Daneel
+    testo = testo.strip()
+    if not testo and not foto and not audio:
+        raise HTTPException(400, "messaggio vuoto")
+    async with _lucchetto:
+        if turno is not None and not turno.fatto:
+            chi = "Daneel" if turno.agente == "daneel" else turno.agente.capitalize()
+            raise HTTPException(409, f"{chi} sta ancora rispondendo: aspetta che finisca")
+        percorsi = []
+        if foto:
+            FOTO.mkdir(parents=True, exist_ok=True)
+            for i, f in enumerate(foto[:6]):
+                dati = await f.read(MAX_FOTO + 1)
+                if len(dati) > MAX_FOTO:
+                    raise HTTPException(413, "foto troppo grande")
+                est = Path(f.filename or "").suffix.lower()
+                est = est if est in (".jpg", ".jpeg", ".png", ".heic", ".webp") else ".jpg"
+                p = FOTO / f"{time.strftime('%Y%m%d-%H%M%S')}-{i}{est}"
+                p.write_bytes(dati)
+                percorsi.append(str(p))
+        vocale = None
+        if audio:
+            dati = await audio.read(MAX_AUDIO + 1)
+            if len(dati) > MAX_AUDIO:
+                raise HTTPException(413, "vocale troppo lungo")
+            AUDIO.mkdir(parents=True, exist_ok=True)
+            est = Path(audio.filename or "").suffix.lower()
+            est = est if est in (".m4a", ".mp4", ".webm", ".ogg", ".wav") else ".m4a"
+            vocale = AUDIO / f"{time.strftime('%Y%m%d-%H%M%S')}{est}"
+            vocale.write_bytes(dati)
+        foto_txt = ("\n\n[Foto allegate: " + ", ".join(percorsi) + "]") if percorsi else ""
+        nota = NOTA_SUB.format(via) if via != "daneel" else ""
+        prompt = (foto_txt if vocale else (testo or "(nessun testo)") + foto_txt) + nota
+        storia = _leggi_storia(agente)
+        storia["messaggi"].append({"ruolo": "gabriele", "testo": "…" if vocale else testo, "foto": len(percorsi),
+                                   "vocale": bool(vocale), "via": via if via != "daneel" else None,
+                                   "ts": time.time()})
+        _scrivi_storia(agente, storia)
+        turno = Turno(testo, agente)
+        asyncio.create_task(_esegui(turno, prompt, vocale))
+        t = turno
+    return StreamingResponse(t.segui(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/api/segui")
+async def segui(agente: str = "daneel", authorization: str | None = Header(None)):
+    _controlla(authorization)
+    if turno is None or turno.fatto or turno.agente != _agente(agente):
+        raise HTTPException(404, "nessun turno in corso")
+    return StreamingResponse(turno.segui(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+
+
+@app.post("/api/nuova")
+async def nuova(agente: str = "daneel", authorization: str | None = Header(None)):
+    """Nuova conversazione: la storia vecchia va in archivio e la prossima volta parte una sessione nuova."""
+    _controlla(authorization)
+    agente = _agente(agente)
+    if turno is not None and not turno.fatto and turno.agente == agente:
+        raise HTTPException(409, "aspetta che finisca la risposta")
+    s = _leggi_storia(agente)
+    if s["messaggi"]:
+        (DATI / "archivio").mkdir(parents=True, exist_ok=True)
+        (DATI / "archivio" / f"{time.strftime('%Y%m%d-%H%M%S')}-{agente}.json").write_text(
+            json.dumps(s, ensure_ascii=False, indent=1))
+    _scrivi_storia(agente, {"sessione": None, "messaggi": []})
+    return {"ok": True}
+
+
+@app.get("/api/push/chiave")
+async def push_chiave(authorization: str | None = Header(None)):
+    _controlla(authorization)
+    return {"chiave": VAPID_PUB.read_text().strip(), "iscritti": len(_leggi_iscrizioni())}
+
+
+@app.post("/api/push/iscrivi")
+async def push_iscrivi(iscrizione: dict, authorization: str | None = Header(None)):
+    _controlla(authorization)
+    if not str(iscrizione.get("endpoint", "")).startswith("https://") or "keys" not in iscrizione:
+        raise HTTPException(400, "iscrizione non valida")
+    altre = [s for s in _leggi_iscrizioni() if s.get("endpoint") != iscrizione["endpoint"]]
+    DATI.mkdir(parents=True, exist_ok=True)
+    ISCRIZIONI.write_text(json.dumps(altre + [{"endpoint": iscrizione["endpoint"], "keys": iscrizione["keys"]}]))
+    ISCRIZIONI.chmod(0o600)
+    return {"ok": True}
+
+
+@app.post("/api/push/disiscrivi")
+async def push_disiscrivi(dati: dict, authorization: str | None = Header(None)):
+    _controlla(authorization)
+    altre = [s for s in _leggi_iscrizioni() if s.get("endpoint") != dati.get("endpoint")]
+    ISCRIZIONI.write_text(json.dumps(altre))
+    return {"ok": True}
+
+
+@app.post("/api/push/prova")
+async def push_prova(authorization: str | None = Header(None)):
+    _controlla(authorization)
+    return {"mandate": await notifica("", "Le notifiche funzionano ✅")}
+
+
+@app.post("/api/notifica")
+async def api_notifica(dati: dict, authorization: str | None = Header(None)):
+    """Per gli script del server e per Daneel (~/bin/notifica-app): una notifica sull'iPhone."""
+    _controlla(authorization)
+    agente = dati.get("agente") if dati.get("agente") in AGENTI else "daneel"
+    titolo = dati.get("titolo") or ""
+    if not dati.get("testo"):
+        raise HTTPException(400, "manca il testo")
+    return {"mandate": await notifica(titolo, str(dati["testo"]), agente)}
+
+
+# ---------- Messaggi che partono dal server (timer, avvisi): prima andavano a Daneel su Telegram ----------
+
+SISTEMA_TIMER = """
+- Questo messaggio non l'ha scritto Gabriele: l'ha mandato un timer del server. Fai quello che chiede; quello che \
+scrivi arriva a Gabriele nella chat dell'app e come notifica."""
+SISTEMA_SILENZIO = SISTEMA_TIMER + """
+- È un lavoro silenzioso: se non c'è niente che Gabriele debba sapere (tutto a posto), rispondi esattamente NIENTE. \
+Altrimenti scrivi solo l'avviso, in poche righe."""
+
+
+def _aggiungi_alla_chat(ruolo: str, testo: str):
+    storia = _leggi_storia("daneel")
+    storia["messaggi"].append({"ruolo": ruolo, "testo": testo, "ts": time.time()})
+    _scrivi_storia("daneel", storia)
+
+
+async def _aspetta_libero(massimo: int = 600):
+    """Una risposta alla volta: un timer aspetta che Daneel finisca quella in corso (al massimo 10 minuti)."""
+    for _ in range(massimo):
+        if turno is None or turno.fatto:
+            return
+        await asyncio.sleep(1)
+    raise HTTPException(409, "Daneel è occupato da più di 10 minuti")
+
+
+@app.post("/api/avviso")
+async def avviso(dati: dict, authorization: str | None = Header(None)):
+    """Un avviso già scritto (Revolut, NotebookLM, Muay Thai…): va nella chat di Daneel e arriva come notifica."""
+    _controlla(authorization)
+    testo = str(dati.get("testo", "")).strip()
+    if not testo:
+        raise HTTPException(400, "manca il testo")
+    _aggiungi_alla_chat("daneel", testo)
+    return {"mandate": await notifica("", testo)}
+
+
+@app.post("/api/sistema")
+async def sistema(dati: dict, authorization: str | None = Header(None)):
+    """Un compito da un timer (~/bin/manda-a-daneel). Con `silenzioso` gira in una sessione a parte e scrive in chat
+    (con notifica) solo se c'è qualcosa da dire; altrimenti è un turno della chat di Daneel, con un'etichetta ⏰."""
+    global turno
+    _controlla(authorization)
+    prompt = str(dati.get("prompt", "")).strip()
+    if not prompt:
+        raise HTTPException(400, "manca il prompt")
+    etichetta = str(dati.get("etichetta") or "Messaggio automatico")
+    if dati.get("silenzioso"):
+        return await _silenzioso(prompt)
+    await _aspetta_libero()
+    async with _lucchetto:
+        await _aspetta_libero()
+        _aggiungi_alla_chat("sistema", "⏰ " + etichetta)
+        turno = Turno(etichetta, "daneel")
+        turno.timer = True
+        asyncio.create_task(_esegui(turno, prompt))
+    return {"ok": True}
+
+
+async def _silenzioso(prompt: str):
+    env = {**os.environ, "PATH": f"{HOME}/.local/bin:{HOME}/bin:{os.environ.get('PATH', '/usr/bin:/bin')}"}
+    proc = await asyncio.create_subprocess_exec(
+        str(CLAUDE), "-p", prompt, "--output-format", "json", "--settings", str(HOME / ".claude/app-settings.json"),
+        "--append-system-prompt", SISTEMA + SISTEMA_SILENZIO, cwd=HOME / "claude-mind", env=env,
+        stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    out, err = await asyncio.wait_for(proc.communicate(), TIMEOUT)
+    try:
+        esito = json.loads(out)
+        testo = (esito.get("result") or "").strip()
+        if esito.get("is_error"):
+            testo = f"⚠️ Un lavoro automatico non è andato: {testo or 'errore di Claude'}"
+    except json.JSONDecodeError:
+        testo = f"⚠️ Un lavoro automatico non è andato: {err.decode(errors='replace')[-300:]}"
+    if testo and testo.strip(" .") != "NIENTE":
+        _aggiungi_alla_chat("daneel", testo)
+        await notifica("", testo)
+        return {"detto": testo}
+    return {"detto": None}
+
+
+@app.post("/api/visibile")
+async def visibile(token: str = Form(""), stato: str = Form("si"), authorization: str | None = Header(None)):
+    """L'app in primo piano si fa sentire ogni ~15 s; quando va in background lo dice (sendBeacon, che non
+    manda intestazioni: il token arriva nel corpo)."""
+    global _ultimo_visibile
+    _controlla(authorization or "Bearer " + token)
+    _ultimo_visibile = time.time() if stato == "si" else 0.0
+    return {"ok": True}
+
+
+@app.get("/")
+async def indice():
+    return FileResponse(QUI / "static/index.html", headers={"Cache-Control": "no-cache"})
+
+
+plancia.collega(_controlla)  # la Plancia (database e agenda), con lo stesso token dell'app
+app.include_router(plancia.router)
+cibo.collega(_controlla)  # la scheda Cibo: Open Food Facts e pasti aggiunti a mano
+app.include_router(cibo.router)
+app.mount("/", StaticFiles(directory=QUI / "static"), name="static")
