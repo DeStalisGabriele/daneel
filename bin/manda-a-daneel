@@ -6,7 +6,7 @@
   manda-a-daneel --silenzioso "/sync-plancia-hevy"
       lavora in una sessione a parte; scrive a Gabriele (chat + notifica) solo se c'è qualcosa da dire
 
-Se Daneel sta già rispondendo, aspetta che finisca (al massimo 10 minuti).
+Se Daneel sta già rispondendo (o il piano è al limite), il compito aspetta in coda e parte appena può.
 """
 
 import json

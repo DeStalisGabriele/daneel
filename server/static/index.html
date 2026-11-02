@@ -51,6 +51,9 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .msg.errore { background: transparent; color: var(--errore); font-size: 14px; border: 1px dashed var(--errore); }
 .msg.sistema { margin: 14px auto 8px; padding: 2px 10px; background: transparent; color: var(--tenue); font-size: 13px; text-align: center; }
 .msg .foto-n { display: block; font-size: 13px; opacity: .85; }
+/* un messaggio che aspetta in coda (Daneel sta rispondendo a un altro, o il piano è al limite): tocca per toglierlo */
+.msg.in-coda { opacity: .62; cursor: pointer; }
+.msg .coda-n { display: block; margin-top: 3px; font-size: 12px; opacity: .9; }
 .msg p { margin: 0 0 8px; } .msg p:last-child { margin-bottom: 0; }
 .msg ul, .msg ol { margin: 4px 0 8px; padding-left: 22px; } .msg li { margin: 2px 0; }
 .msg h3, .msg h4 { margin: 8px 0 4px; font-size: 16px; }
@@ -353,11 +356,22 @@ function aggiungiMsg(m) {
   const d = document.createElement("div"); d.className = "msg " + m.ruolo;
   if (m.ruolo === "daneel") d.innerHTML = md(m.testo);
   else { d.textContent = (m.via ? info(m.via).emoji + " " : "") + (m.vocale ? "🎤 " : "") + (m.testo || ""); if (m.foto) { const s = document.createElement("span"); s.className = "foto-n"; s.textContent = `📷 ${m.foto} foto`; d.prepend(s); } }
+  if (m.coda) segnaInCoda(d, m.id);
   chat.appendChild(d); return d;
+}
+function segnaInCoda(d, id) {
+  d.classList.add("in-coda"); d.dataset.id = id;
+  const s = document.createElement("span"); s.className = "coda-n"; s.textContent = "🕒 in coda · tocca per toglierlo"; d.appendChild(s);
 }
 function mostraStoria(msg) { chat.innerHTML = ""; if (!msg.length) return vuoto(); msg.forEach(aggiungiMsg); giu(); }
 function setStato(s) { statoEl.textContent = s; }
-function setOccupato(v) { occupato = v; aggiornaInvia(); setStato(v ? "sta pensando…" : "pronto"); if (v) umore("pensa"); }
+// Coda dei messaggi (dal server): quanti aspettano e, se il piano è al limite, fino a quando è in pausa.
+let codaN = 0, pausaFino = 0;
+function statoPronto() {
+  if (pausaFino > Date.now()) return "⏸️ limite del piano, riprendo alle " + new Date(pausaFino).toLocaleTimeString("it-IT", {hour: "2-digit", minute: "2-digit"});
+  return codaN ? `pronto · ${codaN} in coda` : "pronto";
+}
+function setOccupato(v) { occupato = v; aggiornaInvia(); setStato(v ? "sta pensando…" : statoPronto()); if (v) umore("pensa"); }
 // Il tasto a destra: ↑ se c'è qualcosa da mandare, 🎤 se il campo è vuoto, ■ mentre registri.
 const SVG_SU = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>';
 const SVG_MIC = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width:22px;height:22px"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><path d="M12 17v4"/></svg>';
@@ -369,7 +383,7 @@ function aggiornaInvia() {
     invia.innerHTML = {su: SVG_SU, mic: SVG_MIC, rec: SVG_MIC, stop: SVG_STOP}[modo];
     invia.setAttribute("aria-label", {su: "Invia", mic: "Tieni premuto per un vocale", rec: "Rilascia per inviare", stop: "Invia il vocale"}[modo]);
   }
-  invia.disabled = occupato && !reg;
+  invia.disabled = false;   // anche mentre Daneel risponde: il messaggio va in coda
 }
 
 function nuovaBolla() {
@@ -387,14 +401,18 @@ function evento(ev) {
     b.testo += ev.testo; b.el.innerHTML = md(b.testo) || '<span class="pensa"><i></i><i></i><i></i></span>'; giu(); }
   else if (ev.tipo === "strumento") { const c = document.createElement("span"); c.className = "chip"; c.textContent = "⚙︎ " + ev.nome; b.chip.appendChild(c); umore("pensa"); setStato(ev.nome + "…"); giu(); }
   else if (ev.tipo === "trascritto") {   // il vocale è diventato testo: lo mostra nella bolla di Gabriele
-    const mie = chat.querySelectorAll(".msg.gabriele"), ult = mie[mie.length - 1];
+    const mie = chat.querySelectorAll(".msg.gabriele:not(.in-coda)"), ult = mie[mie.length - 1];
     if (ult) { const f = ult.querySelector(".foto-n"); ult.textContent = "🎤 " + ev.testo; if (f) ult.prepend(f); }
     giu();
   }
   else if (ev.tipo === "errore") { b.errore = true; aggiungiMsg({ruolo: "errore", testo: ev.testo}); giu(); }
+  else if (ev.tipo === "pausa") { b.pausa = true; aggiungiMsg({ruolo: "sistema", testo: ev.testo}); giu(); }   // piano al limite
   else if (ev.tipo === "fine") {
-    clearTimeout(tParla); if (!b.testo.trim()) b.el.remove(); bollaViva = null; setOccupato(false);
-    umore(b.errore ? "confuso" : "felice", b.errore ? 2500 : 1800);
+    clearTimeout(tParla); if (!b.testo.trim()) { b.el.remove(); if (!b.chip.children.length) b.chip.remove(); }
+    bollaViva = null; setOccupato(false);
+    umore(b.errore || b.pausa ? "confuso" : "felice", b.errore || b.pausa ? 2500 : 1800);
+    // c'era qualcosa in coda: il server ha già fatto partire il prossimo, ci si attacca a lui
+    if (b.pausa || chat.querySelector(".msg.in-coda")) setTimeout(carica, 300);
   }
 }
 async function leggiFlusso(risp) {
@@ -419,7 +437,9 @@ async function carica() {
   const s = await r.json();
   if (bollaViva) return;   // un flusso è già aperto
   messaggiNoti = s.messaggi.length;
+  codaN = s.coda || 0; pausaFino = (s.pausa_fino || 0) * 1000;
   mostraStoria(s.messaggi);
+  if (!s.in_corso && !occupato) setStato(statoPronto());
   if (s.in_corso) {        // la risposta è ancora in corso: ci si riattacca dall'inizio del turno
     setOccupato(true); nuovaBolla();
     try { const f = await api("api/segui"); if (f.ok) await leggiFlusso(f); } catch (e) {}
@@ -428,24 +448,47 @@ async function carica() {
 }
 
 async function manda(vocale) {
-  if (occupato) return;
   const t = vocale ? "" : testo.value.trim(); if (!t && !foto.length && !vocale) return;
   const fd = new FormData(); fd.append("testo", t); fd.append("agente", agente);
   foto.forEach((f, i) => fd.append("foto", f.blob, `foto${i}.jpg`));
   if (vocale) fd.append("audio", vocale.blob, "vocale" + vocale.est);
-  aggiungiMsg({ruolo: "gabriele", testo: vocale ? "…" : t, foto: foto.length, vocale: !!vocale, via: agente === "daneel" ? null : agente});
-  testo.value = ""; foto = []; $("#anteprime").innerHTML = "";
-  setOccupato(true); nuovaBolla();
+  const mio = aggiungiMsg({ruolo: "gabriele", testo: vocale ? "…" : t, foto: foto.length, vocale: !!vocale, via: agente === "daneel" ? null : agente});
+  testo.value = ""; foto = []; $("#anteprime").innerHTML = ""; aggiornaInvia(); giu();
+  // Se Daneel sta già rispondendo il messaggio va in coda: la risposta in corso resta dov'è.
+  const eraOccupato = occupato;
+  if (!eraOccupato) { setOccupato(true); nuovaBolla(); }
   try {
     const r = await api("api/messaggio", {method: "POST", body: fd});
-    if (!r.ok) { evento({tipo: "errore", testo: (await r.json().catch(() => ({}))).detail || "Errore " + r.status}); evento({tipo: "fine"}); return; }
+    if (!r.ok) {
+      const err = (await r.json().catch(() => ({}))).detail || "Errore " + r.status;
+      if (eraOccupato) { aggiungiMsg({ruolo: "errore", testo: err}); giu(); }
+      else { evento({tipo: "errore", testo: err}); evento({tipo: "fine"}); }
+      return;
+    }
+    if ((r.headers.get("content-type") || "").includes("application/json")) {
+      const j = await r.json();   // {in_coda, id, posizione, pausa_fino}
+      segnaInCoda(mio, j.id); codaN = j.posizione; pausaFino = (j.pausa_fino || 0) * 1000; giu();
+      if (!eraOccupato && bollaViva) { bollaViva.el.remove(); bollaViva.chip.remove(); bollaViva = null; setOccupato(false); umore(umoreBase()); }
+      else if (!occupato) setStato(statoPronto());
+      return;
+    }
     await leggiFlusso(r);
   } catch (e) {
     // connessione persa (app in background): la risposta continua sul server, la riprendiamo al ritorno
+    if (eraOccupato) return;   // la bolla aperta è di un'altra risposta, che ha il suo flusso
     setStato("ricollego…");
   }
   if (bollaViva) { bollaViva = null; setOccupato(false); carica(); }
 }
+
+// Toccare un messaggio in coda lo toglie (se non è ancora partito).
+chat.addEventListener("click", async e => {
+  const d = e.target.closest(".msg.in-coda"); if (!d || !d.dataset.id) return;
+  if (!confirm("Togliere questo messaggio dalla coda?")) return;
+  const r = await api("api/coda/togli", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({id: d.dataset.id})});
+  if (r.ok) { d.remove(); codaN = Math.max(0, codaN - 1); if (!codaN) pausaFino = 0; if (!occupato) setStato(statoPronto()); }
+  else { avviso("È già partito 🙂"); if (!occupato) carica(); }
+});
 
 // Riduce le foto a 1600 px in JPEG, così il caricamento è veloce.
 function riduci(file) {
@@ -488,7 +531,7 @@ let dito = null;  // {x, y, id} mentre il dito è sul 🎤
 const ANNULLA_DX = 90, BLOCCA_DY = 70;   // px da scorrere
 
 async function registra() {
-  if (occupato || reg) return;
+  if (reg) return;
   let flusso;
   try { flusso = await navigator.mediaDevices.getUserMedia({audio: true}); }
   catch (e) { avviso("Per i vocali serve il permesso del microfono: Impostazioni → Daneel (o Safari) → Microfono."); return; }
@@ -527,7 +570,7 @@ function fermaRegistrazione(invia) {
 $("#annulla").onclick = () => fermaRegistrazione(false);
 
 invia.addEventListener("pointerdown", e => {
-  if (invia.dataset.modo !== "mic" || occupato) return;
+  if (invia.dataset.modo !== "mic") return;
   e.preventDefault();
   try { invia.setPointerCapture(e.pointerId); } catch (err) {}
   dito = {x: e.clientX, y: e.clientY, id: e.pointerId, t: Date.now()};

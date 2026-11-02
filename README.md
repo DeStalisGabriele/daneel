@@ -31,6 +31,8 @@ Claude Code already does everything a personal assistant needs: tools, memory fi
 - Streaming replies (Claude Code `stream-json` output → Server-Sent Events).
 - Photos (camera or library) and **voice messages**, WhatsApp-style, transcribed on the server with Whisper.
 - Turns run in the background: close the app mid-answer and the reply is still there when you come back.
+- **Message queue:** keep writing while Daneel is answering; new messages (and scheduled jobs) wait their turn. Tap a queued message to cancel it.
+- **Plan limits handled for you:** if Claude Code reports that the plan's usage limit is reached, the message goes back to the front of the queue and Daneel pauses until the reset time, then picks up where it left off and notifies you.
 - **Subagents** from a picker next to the input box (Calendar, Mailman, Nutritionist, Scribe…): the message is routed to that subagent inside the same conversation.
 - **Push notifications** (Web Push with VAPID): scheduled jobs and long tasks write into the chat and ping your phone. The first line of the reply becomes the notification title.
 
@@ -120,6 +122,7 @@ Configuration (environment variables):
 | --- | --- | --- |
 | `DANEEL_DATI` | `~/.local/share/daneel-app` | chat history, uploads, dashboard database, caches |
 | `DANEEL_CONFIG` | `~/.config/daneel-app` | token, VAPID keys, push subscriptions, calendar feeds |
+| `DANEEL_CLAUDE` | `~/.local/bin/claude` | the Claude Code binary (point it to a fake script to test without using your plan) |
 | `DANEEL_VAPID_SUB` | `mailto:daneel@example.com` | contact sent to push services: a `mailto:` address or a bare `https://host` (no path, no port) |
 
 Claude Code runs in `~/claude-mind` with `--settings ~/.claude/app-settings.json`; point these at your own memory folder and permission settings. Voice transcription expects a `~/bin/trascrivi` script (e.g. whisper.cpp) that prints the text of an audio file.

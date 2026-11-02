@@ -18,7 +18,9 @@ import os
 import re
 import secrets
 import time
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse
@@ -35,12 +37,15 @@ DATI = Path(os.environ.get("DANEEL_DATI", HOME / ".local/share/daneel-app"))
 CONFIG = Path(os.environ.get("DANEEL_CONFIG", HOME / ".config/daneel-app"))
 FOTO = HOME / "tmp/app-foto"
 TOKEN_FILE = CONFIG / "token"
-CLAUDE = HOME / ".local/bin/claude"
+CLAUDE = Path(os.environ.get("DANEEL_CLAUDE", HOME / ".local/bin/claude"))
 MAX_FOTO = 8 * 1024 * 1024  # byte per foto
 AUDIO = HOME / "tmp/app-vocali"
 MAX_AUDIO = 20 * 1024 * 1024  # byte per vocale (qualche minuto)
 TIMEOUT = 15 * 60  # secondi massimi per un turno
 ISCRIZIONI = DATI / "iscrizioni.json"  # i telefoni iscritti alle notifiche (Web Push)
+CODA = DATI / "coda.json"  # i messaggi che aspettano il loro turno, e fino a quando il piano è in pausa per il limite
+PAUSA_SENZA_ORA = 30 * 60  # secondi: se il limite non dice quando si azzera, si riprova dopo mezz'ora
+ROMA = ZoneInfo("Europe/Rome")
 VAPID_PEM = CONFIG / "vapid.pem"
 VAPID_PUB = CONFIG / "vapid-pubblica.txt"
 # chi manda le notifiche: un URL https senza porta (lo vuole py_vapid), per esempio l'indirizzo del server sulla tailnet
@@ -140,6 +145,7 @@ class Turno:
         self.testo = testo
         self.agente = agente
         self.timer = False  # True se il turno l'ha avviato un timer (/api/sistema)
+        self.voce: dict | None = None  # la voce della coda da cui viene: se il piano è al limite, ci torna
         self.eventi: list[dict] = []
         self.fatto = False
         self.cambiato = asyncio.Condition()
@@ -172,6 +178,87 @@ class Turno:
 turno: Turno | None = None
 _lucchetto = asyncio.Lock()
 _ultimo_visibile = 0.0  # quando l'app aperta in primo piano si è fatta sentire l'ultima volta
+
+
+# ---------- Coda: i messaggi mandati mentre Daneel risponde, o mentre il piano è al limite ----------
+# Una voce è {id, prompt, vocale, testo, timer, etichetta}; il suo messaggio nella chat ha "coda": true finché non
+# parte. Se un turno trova il limite del piano, la sua voce torna in testa e la coda si ferma fino al reset.
+
+def _leggi_coda() -> dict:
+    try:
+        c = json.loads(CODA.read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        c = {}
+    return {"voci": c.get("voci", []), "pausa_fino": c.get("pausa_fino", 0)}
+
+
+def _scrivi_coda(c: dict):
+    CODA.parent.mkdir(parents=True, exist_ok=True)
+    CODA.write_text(json.dumps(c, ensure_ascii=False))
+
+
+def _accoda(voce: dict, in_testa: bool = False):
+    c = _leggi_coda()
+    c["voci"].insert(0 if in_testa else len(c["voci"]), voce)
+    _scrivi_coda(c)
+
+
+def _segna_in_coda(storia: dict, id_: str, si: bool):
+    for m in reversed(storia["messaggi"]):
+        if m.get("id") == id_:
+            if si:
+                m["coda"] = True
+            else:
+                m.pop("coda", None)
+            return
+
+
+def _e_limite(testo: str) -> bool:
+    return bool(re.search(r"usage limit|hit your limit|limit reached|rate.?limit", testo or "", re.I))
+
+
+def _ora(ts: float) -> str:
+    d = datetime.fromtimestamp(ts, ROMA)
+    return ("alle " if d.date() == datetime.now(ROMA).date() else d.strftime("%d/%m alle ")) + d.strftime("%H:%M")
+
+
+def _prossimo(finito: "Turno | None" = None) -> "Turno | None":
+    """Fa partire la prima voce della coda, se Daneel è libero e il piano non è in pausa. Va chiamata con _lucchetto;
+    `finito` è il turno che sta chiudendo (conta già come libero)."""
+    global turno
+    c = _leggi_coda()
+    if not c["voci"] or time.time() < c["pausa_fino"] or not (turno is None or turno.fatto or turno is finito):
+        return None
+    voce = c["voci"].pop(0)
+    c["pausa_fino"] = 0
+    _scrivi_coda(c)
+    if voce.get("timer"):
+        _aggiungi_alla_chat("sistema", "⏰ " + voce.get("etichetta", "Messaggio automatico"))
+    else:
+        storia = _leggi_storia("daneel")
+        _segna_in_coda(storia, voce["id"], False)
+        _scrivi_storia("daneel", storia)
+    t = Turno(voce.get("testo", ""), "daneel")
+    t.timer, t.voce = bool(voce.get("timer")), voce
+    turno = t
+    asyncio.create_task(_esegui(t, voce["prompt"], Path(voce["vocale"]) if voce.get("vocale") else None))
+    return t
+
+
+async def _sveglia():
+    """Ogni 30 s riprende la coda se si è fermata: pausa per il limite finita, o server appena ripartito."""
+    while True:
+        try:
+            async with _lucchetto:
+                _prossimo()
+        except Exception:  # noqa: BLE001
+            log.exception("coda ferma")
+        await asyncio.sleep(30)
+
+
+@app.on_event("startup")
+async def _avvio():
+    asyncio.create_task(_sveglia())
 
 
 # ---------- Notifiche push (Web Push: su iPhone funzionano per le app aggiunte alla schermata Home) ----------
@@ -269,6 +356,8 @@ async def _esegui(t: Turno, prompt: str, audio: Path | None = None):
         _scrivi_storia(t.agente, storia)
         await t.aggiungi({"tipo": "trascritto", "testo": detto})
         prompt = detto + prompt  # prompt qui ha solo le eventuali foto e la nota del subagente scelto
+        if t.voce:  # se il piano è al limite la voce torna in coda già trascritta
+            t.voce.update(prompt=prompt, vocale=None, testo=detto)
     storia = _leggi_storia(t.agente)
     cmd = [str(CLAUDE), "-p", prompt, "--output-format", "stream-json", "--verbose", "--include-partial-messages",
            "--settings", str(HOME / ".claude/app-settings.json"),
@@ -277,13 +366,14 @@ async def _esegui(t: Turno, prompt: str, audio: Path | None = None):
         cmd += ["--resume", storia["sessione"]]
     env = {**os.environ, "PATH": f"{HOME}/.local/bin:{HOME}/bin:{os.environ.get('PATH', '/usr/bin:/bin')}"}
     risposta, sessione, errore = "", storia.get("sessione"), None
+    limite = None  # il piano è al limite: quando si azzera (secondi Unix, 0 se non si sa)
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd, cwd=HOME / "claude-mind", env=env, stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, limit=16 * 1024 * 1024)
         strumenti: dict[int, dict] = {}
         async def leggi():
-            nonlocal risposta, sessione, errore
+            nonlocal risposta, sessione, errore, limite
             async for riga in proc.stdout:
                 try:
                     m = json.loads(riga)
@@ -315,7 +405,9 @@ async def _esegui(t: Turno, prompt: str, audio: Path | None = None):
                     errore = m.get("result") or "errore di Claude"
                 elif m.get("type") == "rate_limit_event":
                     info = m.get("rate_limit_info", {})
-                    if info.get("status") not in ("allowed", "allowed_warning", None):
+                    if info.get("status") not in ("allowed", "allowed_warning", None) and \
+                            info.get("overageStatus") not in ("allowed", "allowed_warning"):
+                        limite = info.get("resetsAt") or 0
                         errore = "Limite del piano raggiunto: riprova dopo il reset."
         await asyncio.wait_for(leggi(), TIMEOUT)
         await proc.wait()
@@ -328,13 +420,29 @@ async def _esegui(t: Turno, prompt: str, audio: Path | None = None):
         log.exception("turno fallito")
         errore = str(ex)
 
+    if limite is None and errore and _e_limite(errore):
+        limite = 0
     storia = _leggi_storia(t.agente)
     storia["sessione"] = sessione
-    if risposta.strip():
-        storia["messaggi"].append({"ruolo": "daneel", "testo": risposta.strip(), "ts": time.time()})
-    if errore:
-        storia["messaggi"].append({"ruolo": "errore", "testo": errore, "ts": time.time()})
-        await t.aggiungi({"tipo": "errore", "testo": errore})
+    if limite is not None and not risposta.strip() and t.voce:
+        # Piano al limite prima di rispondere: il messaggio torna in testa alla coda e si riprende dopo il reset.
+        fino = float(limite) + 60 if limite and float(limite) > time.time() else time.time() + PAUSA_SENZA_ORA
+        _accoda(t.voce, in_testa=True)
+        c = _leggi_coda()
+        c["pausa_fino"] = fino
+        _scrivi_coda(c)
+        if not t.voce.get("timer"):
+            _segna_in_coda(storia, t.voce["id"], True)
+        errore = None
+        risposta = f"⏸️ Limite del piano raggiunto: riprendo da solo {_ora(fino)} ({len(c['voci'])} in coda)."
+        storia["messaggi"].append({"ruolo": "sistema", "testo": risposta, "ts": time.time()})
+        await t.aggiungi({"tipo": "pausa", "testo": risposta})
+    else:
+        if risposta.strip():
+            storia["messaggi"].append({"ruolo": "daneel", "testo": risposta.strip(), "ts": time.time()})
+        if errore:
+            storia["messaggi"].append({"ruolo": "errore", "testo": errore, "ts": time.time()})
+            await t.aggiungi({"tipo": "errore", "testo": errore})
     _scrivi_storia(t.agente, storia)
     # Se intanto Gabriele ha chiuso l'app (o lo schermo è spento), lo avvisa con una notifica.
     if time.time() - _ultimo_visibile > VISIBILE_PER and (risposta.strip() or errore):
@@ -342,6 +450,8 @@ async def _esegui(t: Turno, prompt: str, audio: Path | None = None):
             await notifica("", risposta.strip() or f"Errore: {errore}", t.agente)
         except Exception:  # noqa: BLE001
             log.exception("notifica non mandata")
+    async with _lucchetto:  # parte il prossimo della coda prima della "fine", così l'app lo trova già in corso
+        _prossimo(finito=t)
     await t.aggiungi({"tipo": "fine"})
     async with t.cambiato:
         t.fatto = True
@@ -355,8 +465,10 @@ async def stato(agente: str = "daneel", authorization: str | None = Header(None)
     s = _leggi_storia(agente)
     vivo = turno is not None and not turno.fatto
     # in_corso: la risposta che si sta scrivendo è in questa chat; occupato: è in un'altra (una alla volta)
+    c = _leggi_coda()
     return {"messaggi": s["messaggi"][-200:], "in_corso": vivo and turno.agente == agente,
-            "occupato": turno.agente if vivo and turno.agente != agente else None}
+            "occupato": turno.agente if vivo and turno.agente != agente else None,
+            "coda": len(c["voci"]), "pausa_fino": c["pausa_fino"] if c["pausa_fino"] > time.time() else 0}
 
 
 @app.post("/api/messaggio")
@@ -370,9 +482,8 @@ async def messaggio(testo: str = Form(""), agente: str = Form("daneel"), foto: l
     if not testo and not foto and not audio:
         raise HTTPException(400, "messaggio vuoto")
     async with _lucchetto:
-        if turno is not None and not turno.fatto:
-            chi = "Daneel" if turno.agente == "daneel" else turno.agente.capitalize()
-            raise HTTPException(409, f"{chi} sta ancora rispondendo: aspetta che finisca")
+        # Se Daneel sta già rispondendo (o il piano è in pausa) il messaggio aspetta in coda: niente più "aspetta".
+        id_ = secrets.token_hex(6)
         percorsi = []
         if foto:
             FOTO.mkdir(parents=True, exist_ok=True)
@@ -382,7 +493,7 @@ async def messaggio(testo: str = Form(""), agente: str = Form("daneel"), foto: l
                     raise HTTPException(413, "foto troppo grande")
                 est = Path(f.filename or "").suffix.lower()
                 est = est if est in (".jpg", ".jpeg", ".png", ".heic", ".webp") else ".jpg"
-                p = FOTO / f"{time.strftime('%Y%m%d-%H%M%S')}-{i}{est}"
+                p = FOTO / f"{time.strftime('%Y%m%d-%H%M%S')}-{id_}-{i}{est}"
                 p.write_bytes(dati)
                 percorsi.append(str(p))
         vocale = None
@@ -393,7 +504,7 @@ async def messaggio(testo: str = Form(""), agente: str = Form("daneel"), foto: l
             AUDIO.mkdir(parents=True, exist_ok=True)
             est = Path(audio.filename or "").suffix.lower()
             est = est if est in (".m4a", ".mp4", ".webm", ".ogg", ".wav") else ".m4a"
-            vocale = AUDIO / f"{time.strftime('%Y%m%d-%H%M%S')}{est}"
+            vocale = AUDIO / f"{time.strftime('%Y%m%d-%H%M%S')}-{id_}{est}"
             vocale.write_bytes(dati)
         foto_txt = ("\n\n[Foto allegate: " + ", ".join(percorsi) + "]") if percorsi else ""
         nota = NOTA_SUB.format(via) if via != "daneel" else ""
@@ -401,12 +512,35 @@ async def messaggio(testo: str = Form(""), agente: str = Form("daneel"), foto: l
         storia = _leggi_storia(agente)
         storia["messaggi"].append({"ruolo": "gabriele", "testo": "…" if vocale else testo, "foto": len(percorsi),
                                    "vocale": bool(vocale), "via": via if via != "daneel" else None,
-                                   "ts": time.time()})
+                                   "ts": time.time(), "id": id_, "coda": True})
         _scrivi_storia(agente, storia)
-        turno = Turno(testo, agente)
-        asyncio.create_task(_esegui(turno, prompt, vocale))
-        t = turno
+        _accoda({"id": id_, "prompt": prompt, "vocale": str(vocale) if vocale else None, "testo": testo})
+        t = _prossimo()
+        if t is None or t.voce["id"] != id_:
+            c = _leggi_coda()
+            return {"in_coda": True, "id": id_, "posizione": len(c["voci"]),
+                    "pausa_fino": c["pausa_fino"] if c["pausa_fino"] > time.time() else 0}
     return StreamingResponse(t.segui(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+
+
+@app.post("/api/coda/togli")
+async def coda_togli(dati: dict, authorization: str | None = Header(None)):
+    """Toglie un messaggio che aspetta ancora in coda (e la sua bolla dalla chat)."""
+    _controlla(authorization)
+    id_ = str(dati.get("id", ""))
+    async with _lucchetto:
+        c = _leggi_coda()
+        resto = [v for v in c["voci"] if v.get("id") != id_]
+        if len(resto) == len(c["voci"]):
+            raise HTTPException(404, "non è più in coda")
+        c["voci"] = resto
+        if not resto:
+            c["pausa_fino"] = 0
+        _scrivi_coda(c)
+        storia = _leggi_storia("daneel")
+        storia["messaggi"] = [m for m in storia["messaggi"] if m.get("id") != id_]
+        _scrivi_storia("daneel", storia)
+    return {"ok": True}
 
 
 @app.get("/api/segui")
@@ -429,7 +563,8 @@ async def nuova(agente: str = "daneel", authorization: str | None = Header(None)
         (DATI / "archivio").mkdir(parents=True, exist_ok=True)
         (DATI / "archivio" / f"{time.strftime('%Y%m%d-%H%M%S')}-{agente}.json").write_text(
             json.dumps(s, ensure_ascii=False, indent=1))
-    _scrivi_storia(agente, {"sessione": None, "messaggi": []})
+    # i messaggi ancora in coda passano nella conversazione nuova
+    _scrivi_storia(agente, {"sessione": None, "messaggi": [m for m in s["messaggi"] if m.get("coda")]})
     return {"ok": True}
 
 
@@ -492,15 +627,6 @@ def _aggiungi_alla_chat(ruolo: str, testo: str):
     _scrivi_storia("daneel", storia)
 
 
-async def _aspetta_libero(massimo: int = 600):
-    """Una risposta alla volta: un timer aspetta che Daneel finisca quella in corso (al massimo 10 minuti)."""
-    for _ in range(massimo):
-        if turno is None or turno.fatto:
-            return
-        await asyncio.sleep(1)
-    raise HTTPException(409, "Daneel è occupato da più di 10 minuti")
-
-
 @app.post("/api/avviso")
 async def avviso(dati: dict, authorization: str | None = Header(None)):
     """Un avviso già scritto (Revolut, NotebookLM, Muay Thai…): va nella chat di Daneel e arriva come notifica."""
@@ -515,8 +641,8 @@ async def avviso(dati: dict, authorization: str | None = Header(None)):
 @app.post("/api/sistema")
 async def sistema(dati: dict, authorization: str | None = Header(None)):
     """Un compito da un timer (~/bin/manda-a-daneel). Con `silenzioso` gira in una sessione a parte e scrive in chat
-    (con notifica) solo se c'è qualcosa da dire; altrimenti è un turno della chat di Daneel, con un'etichetta ⏰."""
-    global turno
+    (con notifica) solo se c'è qualcosa da dire; altrimenti è un turno della chat di Daneel, con un'etichetta ⏰,
+    che si mette in coda come i messaggi di Gabriele."""
     _controlla(authorization)
     prompt = str(dati.get("prompt", "")).strip()
     if not prompt:
@@ -524,17 +650,15 @@ async def sistema(dati: dict, authorization: str | None = Header(None)):
     etichetta = str(dati.get("etichetta") or "Messaggio automatico")
     if dati.get("silenzioso"):
         return await _silenzioso(prompt)
-    await _aspetta_libero()
     async with _lucchetto:
-        await _aspetta_libero()
-        _aggiungi_alla_chat("sistema", "⏰ " + etichetta)
-        turno = Turno(etichetta, "daneel")
-        turno.timer = True
-        asyncio.create_task(_esegui(turno, prompt))
-    return {"ok": True}
+        _accoda({"id": secrets.token_hex(6), "prompt": prompt, "timer": True, "etichetta": etichetta, "testo": etichetta})
+        partito = _prossimo() is not None
+    return {"ok": True, "in_coda": not partito}
 
 
 async def _silenzioso(prompt: str):
+    if _leggi_coda()["pausa_fino"] > time.time():
+        return {"detto": None, "saltato": "piano al limite"}  # riproverà il timer al prossimo giro
     env = {**os.environ, "PATH": f"{HOME}/.local/bin:{HOME}/bin:{os.environ.get('PATH', '/usr/bin:/bin')}"}
     proc = await asyncio.create_subprocess_exec(
         str(CLAUDE), "-p", prompt, "--output-format", "json", "--settings", str(HOME / ".claude/app-settings.json"),
@@ -545,6 +669,11 @@ async def _silenzioso(prompt: str):
         esito = json.loads(out)
         testo = (esito.get("result") or "").strip()
         if esito.get("is_error"):
+            if _e_limite(testo):  # piano al limite: niente avviso, la coda si ferma e il timer riproverà
+                c = _leggi_coda()
+                c["pausa_fino"] = max(c["pausa_fino"], time.time() + PAUSA_SENZA_ORA)
+                _scrivi_coda(c)
+                return {"detto": None, "saltato": "piano al limite"}
             testo = f"⚠️ Un lavoro automatico non è andato: {testo or 'errore di Claude'}"
     except json.JSONDecodeError:
         testo = f"⚠️ Un lavoro automatico non è andato: {err.decode(errors='replace')[-300:]}"
