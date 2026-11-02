@@ -139,7 +139,7 @@ DANEEL_DATI=/tmp/daneel-demo/dati DANEEL_CONFIG=/tmp/daneel-demo/config \
 
 ## Credits
 
-- [Filippo Cappa](https://github.com/filippocappa), friend and inspiration: Daneel started from his own assistant, [Aide](https://github.com/filippocappa/aide), and runs on his server.
+- [Filippo Cappa](https://github.com/filippocappa), friend and fellow builder: his assistant [Aide](https://github.com/filippocappa/aide) grew out of Daneel, and this app took many ideas back from Aide (tab bar, health scores, food logging). Daneel also runs on his server. Thanks, Filippo.
 - Built together with [Claude Code](https://claude.com/claude-code), as a coworker on the design and the code.
 - Barcode scanning: [ZXing](https://github.com/zxing-js/library) (Apache-2.0), vendored in `server/static/vendor/`.
 - Food data: [Open Food Facts](https://world.openfoodfacts.org) (ODbL).
