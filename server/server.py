@@ -664,7 +664,15 @@ async def _silenzioso(prompt: str):
         str(CLAUDE), "-p", prompt, "--output-format", "json", "--settings", str(HOME / ".claude/app-settings.json"),
         "--append-system-prompt", SISTEMA + SISTEMA_SILENZIO, cwd=HOME / "claude-mind", env=env,
         stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-    out, err = await asyncio.wait_for(proc.communicate(), TIMEOUT)
+    try:
+        out, err = await asyncio.wait_for(proc.communicate(), TIMEOUT)
+    except asyncio.TimeoutError:  # senza kill il claude resterebbe acceso a consumare il piano
+        proc.kill()
+        await proc.wait()
+        testo = "⚠️ Un lavoro automatico ha superato il tempo massimo ed è stato interrotto."
+        _aggiungi_alla_chat("daneel", testo)
+        await notifica("", testo)
+        return {"detto": testo}
     try:
         esito = json.loads(out)
         testo = (esito.get("result") or "").strip()
