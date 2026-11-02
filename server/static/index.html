@@ -77,6 +77,10 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 #via.su { display: flex; }
 #via button { width: 26px; height: 26px; border-radius: 50%; color: var(--tenue); font-size: 13px; }
 #anteprime div { position: relative; flex: none; }
+#anteprime .doc { width: 58px; height: 58px; border-radius: 10px; margin-top: 8px; background: var(--chip);
+  display: grid; place-items: center; align-content: center; font-size: 22px; overflow: hidden; }
+#anteprime .doc span { font-size: 9px; color: var(--tenue); max-width: 54px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
 #anteprime img { width: 58px; height: 58px; object-fit: cover; border-radius: 10px; margin-top: 8px; }
 #anteprime button { position: absolute; top: 2px; right: -6px; width: 22px; height: 22px; border-radius: 50%;
   background: var(--testo); color: var(--sfondo); font-size: 13px; line-height: 22px; }
@@ -203,8 +207,8 @@ footer.registra:not(.bloccato) #lucchetto { display: flex; }
     <!-- Il campo file sta, invisibile, proprio sopra la fotocamera: si tocca lui, e iOS apre il suo menu
          (Libreria foto, Scatta foto…) da lì invece che da un punto a caso dello schermo. -->
     <span class="icona" id="allega">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-      <input type="file" id="file" accept="image/*" multiple aria-label="Allega foto">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+      <input type="file" id="file" multiple aria-label="Allega foto o file">
     </span>
     <div class="campo">
       <!-- Campo modificabile invece di una textarea: iOS non ci mette sopra la barra dei moduli (˄ ˅ ✓). -->
@@ -356,7 +360,8 @@ function aggiungiMsg(m) {
   if (chat.querySelector(".vuoto")) chat.innerHTML = "";
   const d = document.createElement("div"); d.className = "msg " + m.ruolo;
   if (m.ruolo === "daneel") d.innerHTML = md(m.testo);
-  else { d.textContent = (m.via ? info(m.via).emoji + " " : "") + (m.vocale ? "🎤 " : "") + (m.testo || ""); if (m.foto) { const s = document.createElement("span"); s.className = "foto-n"; s.textContent = `📷 ${m.foto} foto`; d.prepend(s); } }
+  else { d.textContent = (m.via ? info(m.via).emoji + " " : "") + (m.vocale ? "🎤 " : "") + (m.testo || ""); if (m.file && m.file.length) { const s = document.createElement("span"); s.className = "foto-n"; s.textContent = "📎 " + m.file.join(", "); d.prepend(s); }
+    if (m.foto) { const s = document.createElement("span"); s.className = "foto-n"; s.textContent = `📷 ${m.foto} foto`; d.prepend(s); } }
   if (m.coda) segnaInCoda(d, m.id);
   chat.appendChild(d); return d;
 }
@@ -451,9 +456,9 @@ async function carica() {
 async function manda(vocale) {
   const t = vocale ? "" : testo.value.trim(); if (!t && !foto.length && !vocale) return;
   const fd = new FormData(); fd.append("testo", t); fd.append("agente", agente);
-  foto.forEach((f, i) => fd.append("foto", f.blob, `foto${i}.jpg`));
+  foto.forEach((f, i) => f.nome ? fd.append("file", f.blob, f.nome) : fd.append("foto", f.blob, `foto${i}.jpg`));
   if (vocale) fd.append("audio", vocale.blob, "vocale" + vocale.est);
-  const mio = aggiungiMsg({ruolo: "gabriele", testo: vocale ? "…" : t, foto: foto.length, vocale: !!vocale, via: agente === "daneel" ? null : agente});
+  const mio = aggiungiMsg({ruolo: "gabriele", testo: vocale ? "…" : t, foto: foto.filter(f => !f.nome).length, file: foto.filter(f => f.nome).map(f => f.nome), vocale: !!vocale, via: agente === "daneel" ? null : agente});
   testo.value = ""; foto = []; $("#anteprime").innerHTML = ""; aggiornaInvia(); giu();
   // Se Daneel sta già rispondendo il messaggio va in coda: la risposta in corso resta dov'è.
   const eraOccupato = occupato;
@@ -507,9 +512,14 @@ function riduci(file) {
 }
 $("#file").onchange = async e => {
   for (const f of [...e.target.files].slice(0, 6 - foto.length)) {
-    const r = await riduci(f); foto.push(r);
+    // Le immagini si riducono; tutto il resto (PDF, documenti…) parte com'è, con il suo nome.
+    const immagine = f.type.startsWith("image/") && !/svg/.test(f.type);
+    if (!immagine && f.size > 25 * 1024 * 1024) { setStato(`⚠️ ${f.name} è troppo grande (massimo 25 MB)`); continue; }
+    const r = immagine ? await riduci(f) : {blob: f, nome: f.name}; foto.push(r);
     const d = document.createElement("div"), x = document.createElement("button");
-    d.innerHTML = `<img src="${r.url}" alt="">`; x.textContent = "×";
+    if (immagine) d.innerHTML = `<img src="${r.url}" alt="">`;
+    else { d.innerHTML = `<div class="doc">${/pdf/.test(f.type) ? "📄" : "📎"}<span></span></div>`; d.querySelector("span").textContent = f.name; }
+    x.textContent = "×";
     x.onclick = () => { foto = foto.filter(q => q !== r); d.remove(); aggiornaInvia(); };
     d.appendChild(x); $("#anteprime").appendChild(d);
   }

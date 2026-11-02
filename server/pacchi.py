@@ -132,13 +132,20 @@ def _inpost(codice: str) -> dict | None:
     return {"corriere": "InPost", "fonte": "inpost", "eventi": eventi}
 
 
-def _ship24(codice: str) -> dict | None:
+def _ship24(codice: str, cap: str | None = None) -> dict | None:
+    """Mondial Relay (codici di 8 cifre) risponde solo con il CAP di destinazione: senza, Ship24 crea un tracker
+    vuoto che resta "pending" per sempre. Un tracker senza eventi vale come "non trovato", non come "in attesa"."""
     try:
         chiave = CHIAVE_SHIP24.read_text().strip()
     except FileNotFoundError:
         raise HTTPException(424, "Per questo corriere serve la chiave di Ship24 (in ~/.config/daneel-app/ship24)")
     try:
-        j = _richiesta("https://api.ship24.com/public/v1/trackers/track", {"trackingNumber": codice},
+        richiesta = {"trackingNumber": codice}
+        if cap:
+            richiesta["destinationPostCode"] = cap
+            if re.fullmatch(r"\d{8}", codice):
+                richiesta["courierCode"] = ["mondialrelay"]
+        j = _richiesta("https://api.ship24.com/public/v1/trackers/track", richiesta,
                        {"Authorization": "Bearer " + chiave}, attesa=70)  # la prima volta può metterci fino a un minuto
     except urllib.error.HTTPError as ex:
         if ex.code in (402, 429):
@@ -148,6 +155,8 @@ def _ship24(codice: str) -> dict | None:
     if not tracce:
         return None
     t = tracce[0]
+    if not t.get("events"):
+        return None
     corrieri = {e.get("courierCode") for e in t.get("events") or [] if e.get("courierCode")}
     eventi = []
     for e in sorted(t.get("events") or [], key=lambda e: (e.get("occurrenceDatetime") or "", -(e.get("order") or 0))):
@@ -157,18 +166,20 @@ def _ship24(codice: str) -> dict | None:
     return {"corriere": ", ".join(sorted(corrieri)) or "Corriere", "fonte": "ship24", "eventi": eventi, "fase": fase}
 
 
-def _cerca(codice: str, fonte: str | None = None) -> dict | None:
+def _cerca(codice: str, fonte: str | None = None, cap: str | None = None) -> dict | None:
     """Prova i corrieri gratis prima di Ship24, così la quota si usa solo quando serve. Con `fonte` (pacco già
     trovato) va dritto da quel corriere. I codici di Amazon Logistics (TBA…) li conosce solo Ship24."""
     if fonte:
         prove = [{"poste": _poste, "inpost": _inpost, "ship24": _ship24}[fonte]]
+    elif cap and re.fullmatch(r"\d{8}", codice):  # Mondial Relay: solo Ship24
+        prove = [_ship24]
     elif codice.startswith("TBA"):
         prove = [_ship24]
     else:
         prove = [_inpost, _poste, _ship24] if codice.isdigit() else [_poste, _ship24]
     for prova in prove:
         try:
-            r = prova(codice)
+            r = prova(codice, cap) if prova is _ship24 else prova(codice)
         except HTTPException:
             raise
         except Exception:  # noqa: BLE001
@@ -178,6 +189,12 @@ def _cerca(codice: str, fonte: str | None = None) -> dict | None:
             r.setdefault("fase", r["eventi"][-1]["fase"] if r["eventi"] else "attesa")
             return r
     return None
+
+
+def _senza_info(p: dict) -> str:
+    if re.fullmatch(r"\d{8}", p["codice"]) and not p.get("cap"):
+        return "Se è Mondial Relay serve il CAP di destinazione: aggiungilo qui sotto"
+    return "Ancora nessuna informazione dal corriere"
 
 
 # ---------- archivio (Plancia) ----------
@@ -198,11 +215,14 @@ def _togli(codice: str):
 
 
 async def _aggiorna(p: dict, avvisa: bool) -> dict:
-    trovato = await asyncio.to_thread(_cerca, p["codice"], p.get("fonte"))
+    trovato = await asyncio.to_thread(_cerca, p["codice"], p.get("fonte"), p.get("cap"))
     adesso = datetime.now(ROMA).isoformat(timespec="minutes")
     p["controllato"] = adesso
     if not trovato:
-        p["errore"] = None if p.get("eventi") else "Ancora nessuna informazione dal corriere"
+        if not p.get("eventi"):
+            p.update(fase="attesa", corriere="" if p.get("fonte") == "ship24" else p.get("corriere", ""), errore=_senza_info(p))
+        else:
+            p["errore"] = None
         plancia._scrivi(COL, p["codice"], p)
         return p
     prima = p.get("fase")
@@ -219,23 +239,28 @@ async def _aggiorna(p: dict, avvisa: bool) -> dict:
 
 @router.post("/aggiungi")
 async def aggiungi(dati: dict, authorization: str | None = Header(None)):
-    """{codice, nome?}: aggiunge il pacco e lo cerca subito. Se c'è già, aggiorna solo il nome (se dato)."""
+    """{codice, nome?, cap?}: aggiunge il pacco e lo cerca subito. Se c'è già, aggiorna nome e CAP (se dati);
+    con un CAP nuovo lo cerca di nuovo."""
     _controlla(authorization)
     codice = _pulisci(dati.get("codice"))
     if not re.fullmatch(r"[A-Z0-9]{6,40}", codice):
         raise HTTPException(400, "Codice di spedizione non valido")
+    cap = re.sub(r"\s", "", str(dati.get("cap") or ""))[:10] or None
     p, _ = plancia._leggi(COL, codice)
     if p:
         if dati.get("nome"):
             p["nome"] = str(dati["nome"])[:60]
-            plancia._scrivi(COL, codice, p)
+        if cap and cap != p.get("cap"):
+            p.update(cap=cap, fonte=None)
+            return await _aggiorna(p, avvisa=False)
+        plancia._scrivi(COL, codice, p)
         return p
     p = {"codice": codice, "nome": str(dati.get("nome") or "")[:60], "aggiunto": datetime.now(ROMA).isoformat(timespec="minutes"),
-         "eventi": [], "fase": None}
-    trovato = await asyncio.to_thread(_cerca, codice)
+         "eventi": [], "fase": None, "cap": cap}
+    trovato = await asyncio.to_thread(_cerca, codice, None, cap)
     if not trovato:
         # il corriere magari non l'ha ancora registrato: lo teniamo e riproviamo al prossimo giro
-        p.update(corriere="", fonte=None, fase="attesa", errore="Ancora nessuna informazione dal corriere")
+        p.update(corriere="", fonte=None, fase="attesa", errore=_senza_info(p))
         plancia._scrivi(COL, codice, p)
         return p
     p.update(trovato, errore=None)

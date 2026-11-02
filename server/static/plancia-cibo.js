@@ -151,6 +151,7 @@
     if (scanner) { try { scanner.reset(); } catch (e) {} scanner = null; }
     document.getElementById("cbVelo")?.remove();
   }
+  addEventListener("hashchange", chiudi);  // cambiando scheda il foglio (e la fotocamera) si chiude
 
   function mostraProdotto(p) {
     const g0 = p.porzioneG && p.porzioneG > 5 ? p.porzioneG : 100;

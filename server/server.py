@@ -40,6 +40,8 @@ FOTO = HOME / "tmp/app-foto"
 TOKEN_FILE = CONFIG / "token"
 CLAUDE = Path(os.environ.get("DANEEL_CLAUDE", HOME / ".local/bin/claude"))
 MAX_FOTO = 8 * 1024 * 1024  # byte per foto
+FILE = HOME / "tmp/app-file"  # gli altri allegati (PDF, documenti, fogli…), con il loro nome
+MAX_FILE = 25 * 1024 * 1024  # byte per file
 AUDIO = HOME / "tmp/app-vocali"
 MAX_AUDIO = 20 * 1024 * 1024  # byte per vocale (qualche minuto)
 TIMEOUT = 15 * 60  # secondi massimi per un turno
@@ -57,7 +59,8 @@ EMOJI = {"daneel": "🤖", "calendario": "📅", "postino": "✉️", "nutrizion
 SISTEMA = """Stai parlando con Gabriele dall'app "Daneel" sul suo iPhone, non da Telegram.
 - Rispondi direttamente nel testo, in italiano, con Markdown semplice (grassetto, elenchi, link). Non usare il tool \
 reply di Telegram né react: quando una skill dice "manda su Telegram" o "reply", qui vuol dire scriverlo nella risposta.
-- Le foto che Gabriele allega arrivano come percorsi locali nel messaggio: leggile con Read (non serve download_attachment).
+- Le foto e i file che Gabriele allega arrivano come percorsi locali nel messaggio: leggili con Read (PDF compresi; \
+per Word, Excel e simili usa gli strumenti adatti). Non serve download_attachment.
 - Per mostrare un'immagine che sta sul web (per esempio la foto di un prodotto Amazon, il campo `immagine`) scrivi \
 ![nome](https://…): l'app la mostra. Non usare percorsi locali nelle immagini.
 - **Ogni risposta ha qualche emoji** (richiesta di Gabriele): di solito 1-3 per messaggio, per esempio all'inizio, \
@@ -486,13 +489,13 @@ async def stato(agente: str = "daneel", authorization: str | None = Header(None)
 
 @app.post("/api/messaggio")
 async def messaggio(testo: str = Form(""), agente: str = Form("daneel"), foto: list[UploadFile] = File(default=[]),
-                    audio: UploadFile | None = File(default=None), authorization: str | None = Header(None)):
+                    file: list[UploadFile] = File(default=[]), audio: UploadFile | None = File(default=None), authorization: str | None = Header(None)):
     global turno
     _controlla(authorization)
     via = _agente(agente)   # il subagente scelto dal menu ("daneel" = automatico)
     agente = "daneel"       # la conversazione è sempre quella di Daneel
     testo = testo.strip()
-    if not testo and not foto and not audio:
+    if not testo and not foto and not file and not audio:
         raise HTTPException(400, "messaggio vuoto")
     async with _lucchetto:
         # Se Daneel sta già rispondendo (o il piano è in pausa) il messaggio aspetta in coda: niente più "aspetta".
@@ -509,6 +512,18 @@ async def messaggio(testo: str = Form(""), agente: str = Form("daneel"), foto: l
                 p = FOTO / f"{time.strftime('%Y%m%d-%H%M%S')}-{id_}-{i}{est}"
                 p.write_bytes(dati)
                 percorsi.append(str(p))
+        allegati = []
+        if file:
+            cartella = FILE / f"{time.strftime('%Y%m%d-%H%M%S')}-{id_}"
+            cartella.mkdir(parents=True, exist_ok=True)
+            for i, f in enumerate(file[:6]):
+                dati = await f.read(MAX_FILE + 1)
+                if len(dati) > MAX_FILE:
+                    raise HTTPException(413, "file troppo grande (massimo 25 MB)")
+                nome = re.sub(r"[^\w.\- ()]", "_", Path(f.filename or f"file{i}").name).strip(". ") or f"file{i}"
+                p = cartella / nome[-120:]
+                p.write_bytes(dati)
+                allegati.append(str(p))
         vocale = None
         if audio:
             dati = await audio.read(MAX_AUDIO + 1)
@@ -520,10 +535,12 @@ async def messaggio(testo: str = Form(""), agente: str = Form("daneel"), foto: l
             vocale = AUDIO / f"{time.strftime('%Y%m%d-%H%M%S')}-{id_}{est}"
             vocale.write_bytes(dati)
         foto_txt = ("\n\n[Foto allegate: " + ", ".join(percorsi) + "]") if percorsi else ""
+        foto_txt += ("\n\n[File allegati: " + ", ".join(allegati) + "]") if allegati else ""
         nota = NOTA_SUB.format(via) if via != "daneel" else ""
         prompt = (foto_txt if vocale else (testo or "(nessun testo)") + foto_txt) + nota
         storia = _leggi_storia(agente)
         storia["messaggi"].append({"ruolo": "gabriele", "testo": "…" if vocale else testo, "foto": len(percorsi),
+                                   "file": [Path(a).name for a in allegati],
                                    "vocale": bool(vocale), "via": via if via != "daneel" else None,
                                    "ts": time.time(), "id": id_, "coda": True})
         _scrivi_storia(agente, storia)

@@ -44,7 +44,10 @@
   stile.textContent = `
   .pc-nuovo{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}
   .pc-nuovo input{box-sizing:border-box;width:100%;min-width:0;border:0;background:var(--fill);border-radius:12px;padding:12px;font-size:17px;color:var(--ink)}
-  .pc-nuovo #pcNome{grid-column:1/-1}
+  .pc-nuovo #pcNome,.pc-nuovo #pcCap{grid-column:1/-1}
+  .pc-cap{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}
+  .pc-cap input{box-sizing:border-box;width:100%;min-width:0;border:0;background:var(--fill);border-radius:12px;padding:11px;font-size:17px;color:var(--ink)}
+  .pc-cap button{border:0;border-radius:12px;background:var(--accent);color:#fff;font-weight:700;padding:0 14px;cursor:pointer}
   .pc-nuovo button{border:0;border-radius:12px;background:var(--accent);color:#fff;font-weight:700;font-size:16px;padding:0 16px;cursor:pointer}
   .pc-nuovo button:disabled{opacity:.5}
   .pc-msg{grid-column:1/-1;font-size:var(--t-foot);color:var(--muted)}
@@ -68,7 +71,7 @@
   .pc-consegnati .pc-pacco{opacity:.72}
   .pc-vuoto{font-size:var(--t-foot);color:var(--muted);text-align:center;padding:18px 8px}
   .pc-velo{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.45);display:grid;align-items:end}
-  .pc-foglio{background:var(--bg);border-radius:20px 20px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom,0px));display:grid;gap:14px;max-height:90dvh;overflow:auto}
+  .pc-foglio{background:var(--bg);border-radius:20px 20px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom,0px));display:grid;gap:14px;max-height:90dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y}
   .pc-testa{display:grid;grid-template-columns:minmax(0,1fr) 30px;gap:10px;align-items:start}
   .pc-testa h3{margin:0;font-size:var(--t-title3);overflow-wrap:anywhere}
   .pc-testa small{display:block;color:var(--muted);font-size:var(--t-foot);margin-top:2px;overflow-wrap:anywhere}
@@ -96,6 +99,7 @@
       <input id="pcCodice" placeholder="Codice di spedizione" autocapitalize="characters" spellcheck="false" enterkeyhint="go">
       <button id="pcVai" type="submit">Traccia</button>
       <input id="pcNome" placeholder="Nome (facoltativo): es. felpa Vinted">
+      <input id="pcCap" placeholder="CAP di destinazione (serve per Mondial Relay)" inputmode="numeric" maxlength="10">
       <div class="pc-msg" id="pcMsg">Poste, SDA, InPost, Amazon, BRT, GLS, DHL, UPS, Mondial Relay…</div>
     </form>
     <div class="pc-lista" id="pcAttivi"></div>
@@ -138,13 +142,14 @@
   const msg = (t, err) => { const m = document.getElementById("pcMsg"); m.textContent = t; m.classList.toggle("err", !!err); };
   document.getElementById("pcForm").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const codice = document.getElementById("pcCodice").value.trim(), nome = document.getElementById("pcNome").value.trim();
+    const codice = document.getElementById("pcCodice").value.trim(), nome = document.getElementById("pcNome").value.trim(),
+      cap = document.getElementById("pcCap").value.trim();
     if (!codice) return;
     const vai = document.getElementById("pcVai"); vai.disabled = true;
     msg("Cerco il pacco… (con alcuni corrieri ci vuole fino a un minuto)");
     try {
-      const p = await api("aggiungi", {codice, nome});
-      document.getElementById("pcCodice").value = ""; document.getElementById("pcNome").value = "";
+      const p = await api("aggiungi", {codice, nome, cap});
+      ["pcCodice", "pcNome", "pcCap"].forEach((id) => document.getElementById(id).value = "");
       document.activeElement && document.activeElement.blur();
       msg(p.corriere ? `Trovato: ${p.corriere} ✅` : "Aggiunto: il corriere non ha ancora informazioni, riprovo ogni ora.");
       if (!pacchi.some((x) => x.codice === p.codice)) { pacchi.push(p); disegna(); }
@@ -175,10 +180,21 @@
         <div class="pc-passi-et">${PASSI.map((t) => `<span>${t}</span>`).join("")}</div></div>
       <div class="card"><ol class="pc-tl">${lista}</ol>
         <span style="font-size:var(--t-cap);color:var(--muted)">${p.controllato ? "Controllato " + esc(quando(p.controllato)).toLowerCase() : ""}</span></div>
+      ${(p.eventi || []).length ? "" : `<form class="pc-cap"><input placeholder="CAP di destinazione" inputmode="numeric" maxlength="10" value="${esc(p.cap || "")}"><button type="submit">Salva</button></form>`}
       <div class="pc-azioni"><button type="button" data-a="aggiorna">🔄 Aggiorna</button>
         <button type="button" data-a="copia">📋 Copia codice</button><button type="button" class="via" data-a="togli">🗑️ Togli</button></div>
     </div>`;
+    velo.querySelector(".pc-foglio").style.maxHeight = Math.round((window.visualViewport?.height || window.innerHeight) * 0.9) + "px";
     velo.querySelector(".pc-x").onclick = () => velo.remove();
+    const formCap = velo.querySelector(".pc-cap");
+    if (formCap) formCap.onsubmit = async (e) => {
+      e.preventDefault();
+      const cap = formCap.querySelector("input").value.trim(), b = formCap.querySelector("button");
+      if (!cap) return;
+      b.disabled = true; b.textContent = "Cerco…";
+      try { const n = await api("aggiungi", {codice: p.codice, cap}); pacchi = pacchi.map((x) => x.codice === n.codice ? n : x); disegna(); }
+      catch (err) { b.disabled = false; b.textContent = "⚠️ Riprova"; }
+    };
     velo.querySelectorAll(".pc-azioni button").forEach((b) => b.onclick = async () => {
       const a = b.dataset.a;
       if (a === "copia") { try { await navigator.clipboard.writeText(p.codice); b.textContent = "✅ Copiato"; } catch (e) {} return; }
@@ -202,4 +218,6 @@
     } catch (e) {}
   })();
   disegna();
+  // la Plancia è un solo iframe per tutte le schede: cambiando scheda cambia solo l'#', quindi il foglio va chiuso a mano
+  addEventListener("hashchange", () => document.querySelectorAll(".pc-velo").forEach((v) => v.remove()));
 })();
