@@ -27,6 +27,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 import cibo
+import pacchi
 import plancia
 
 HOME = Path.home()
@@ -259,6 +260,7 @@ async def _sveglia():
 @app.on_event("startup")
 async def _avvio():
     asyncio.create_task(_sveglia())
+    asyncio.create_task(pacchi.controlla_periodicamente())
 
 
 # ---------- Notifiche push (Web Push: su iPhone funzionano per le app aggiunte alla schermata Home) ----------
@@ -711,4 +713,6 @@ plancia.collega(_controlla)  # la Plancia (database e agenda), con lo stesso tok
 app.include_router(plancia.router)
 cibo.collega(_controlla)  # la scheda Cibo: Open Food Facts e pasti aggiunti a mano
 app.include_router(cibo.router)
+pacchi.collega(_controlla, notifica)  # la scheda Pacchi: tracking da Poste, InPost e Ship24
+app.include_router(pacchi.router)
 app.mount("/", StaticFiles(directory=QUI / "static"), name="static")

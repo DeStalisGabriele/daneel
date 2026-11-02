@@ -2,7 +2,7 @@
 aggiunge lo shim del database, i meta per l'app su iPhone, il tasto "‹ Chat" e nasconde il pulsante di Telegram.
 
 Viste (dal 2026-11-01): l'app mostra la Plancia nelle schede della barra in basso, una vista per scheda, scelta
-dall'hash: plancia.html#oggi, #salute, #cibo, #soldi. Senza hash si vede tutto, come prima. Dentro l'app (in un
+dall'hash: plancia.html#oggi, #salute, #cibo, #soldi, #pacchi. Senza hash si vede tutto, come prima. Dentro l'app (in un
 iframe) il tasto "‹ Chat" sparisce, perché c'è la barra."""
 from pathlib import Path
 qui = Path(__file__).resolve().parent
@@ -36,6 +36,7 @@ viste = """<script>
     salute: {titolo: "Salute", sezioni: ["Salute", "Palestra"]},
     cibo:   {titolo: "Cibo",   sezioni: ["Alimentazione"]},
     soldi:  {titolo: "Soldi",  sezioni: ["Portafoglio"]},
+    pacchi: {titolo: "Pacchi", sezioni: ["Pacchi"]},
   };
   function applica() {
     const v = VISTE[(location.hash || "").slice(1)];
@@ -64,7 +65,8 @@ s = s.replace('<div class="navbar" id="navbar"', '<a id="torna" href="./" aria-l
               '<svg viewBox="0 0 12 20" width="10" height="16" aria-hidden="true"><path d="M10 2 2 10l8 8" fill="none" '
               'stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>Chat</a>\n'
               '<div class="navbar" id="navbar"', 1)
-s = s.rstrip() + "\n" + viste
+# la sezione Pacchi la crea plancia-pacchi.js: deve esistere prima che le viste scelgano cosa mostrare
+s = s.rstrip() + '\n<script src="plancia-pacchi.js"></script>\n' + viste
 s += '<script src="plancia-anelli.js"></script>\n'  # anelli di Salute: Sonno, Recupero, Sforzo (punteggi.py)
 s += '<script src="plancia-cibo.js"></script>\n'  # scheda Cibo: pasti di oggi, codice a barre, ricerca, peso (cibo.py)
 (qui / "static/plancia.html").write_text(s, encoding="utf-8")

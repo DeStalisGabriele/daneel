@@ -39,7 +39,7 @@ Claude Code already does everything a personal assistant needs: tools, memory fi
 <p align="center"><img src="docs/screenshots/2-subagenti.png" width="260" alt="Subagent picker"></p>
 
 ### Dashboard ("Plancia"), split into tabs
-A floating, translucent tab bar in the style of iOS 26 Health switches between the chat and four views of the same dashboard:
+A floating, translucent tab bar in the style of iOS 26 Health switches between the chat and five views of the same dashboard:
 
 | Tab | What it shows |
 | --- | --- |
@@ -47,6 +47,7 @@ A floating, translucent tab bar in the style of iOS 26 Health switches between t
 | **Salute** (Health) | **Sleep, Recovery and Strain rings** (0–100), sleep details, workouts (Hevy) and Muay Thai sessions |
 | **Cibo** (Food) | Today's meals with calories and macros, **barcode scanner** and product search via [Open Food Facts](https://world.openfoodfacts.org), weight log |
 | **Soldi** (Money) | Portfolio value, gains, cash and categorized spending across accounts |
+| **Pacchi** (Parcels) | Paste a tracking code and get the parcel's route on a timeline, with a push notification at every stage |
 
 The dashboard is a single HTML page originally built as a claude.ai Artifact. A tiny shim ([`plancia-shim.js`](server/static/plancia-shim.js)) replaces the Artifact database API with a local **SQLite** store, and updates are pushed live over SSE — when Claude writes to the dashboard from the chat, the page refreshes by itself.
 
@@ -60,6 +61,9 @@ Tap a ring to see exactly how the number was calculated.
 
 ### Food logging without an LLM
 Scan a barcode (ZXing in the browser) or search by name, pick the grams and the meal: [`cibo.py`](server/cibo.py) does the math from Open Food Facts' per-100 g values. No model call, no tokens — Claude is only needed when you want to log a meal from a photo.
+
+### Parcel tracking, free carriers first
+[`pacchi.py`](server/pacchi.py) asks the free public endpoints of Poste Italiane/SDA and InPost first, and falls back to [Ship24](https://www.ship24.com) (free tier: 10 parcels a month, key in `~/.config/daneel-app/ship24`) for Amazon, DHL, GLS, BRT, UPS, Mondial Relay and the rest. An hourly check refreshes parcels in transit and sends a notification when the stage changes; delivered parcels disappear after 14 days. The morning mail summary adds tracking codes it finds with [`bin/pacco`](bin/pacco).
 
 ### The mascot
 Daneel has an animated robot face that reacts to what's happening (calm, listening, thinking, talking, happy, sleeping, confused), and each subagent has its own look.

@@ -90,7 +90,7 @@ html.tastiera footer { padding-bottom: 8px; }
 #schede { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: flex; justify-content: center;
   padding: 0 max(14px, env(safe-area-inset-left, 0px)) max(10px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-right, 0px));
   pointer-events: none; }
-#schede .pillola { pointer-events: auto; width: min(100%, 440px); display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px;
+#schede .pillola { pointer-events: auto; width: min(100%, 480px); display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px;
   padding: 5px; border-radius: 999px; background: color-mix(in srgb, var(--carta) 70%, transparent);
   -webkit-backdrop-filter: blur(22px) saturate(180%); backdrop-filter: blur(22px) saturate(180%);
   border: .5px solid color-mix(in srgb, var(--testo) 14%, transparent); box-shadow: 0 10px 34px rgba(0, 0, 0, .28); }
@@ -224,6 +224,7 @@ footer.registra:not(.bloccato) #lucchetto { display: flex; }
   <button role="tab" data-scheda="salute" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8Z"/><path d="M3.5 12h4l2-3 3 6 2-3h6"/></svg>Salute</button>
   <button role="tab" data-scheda="cibo" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M7 2v20M4 2v6a3 3 0 0 0 6 0V2M17 22V2c-2.2 1.4-3.5 4-3.5 7.5S15 14 17 14"/></svg>Cibo</button>
   <button role="tab" data-scheda="soldi" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 7.5A7 7 0 1 0 18 16.5"/><path d="M4 10.5h10M4 13.5h10"/></svg>Soldi</button>
+  <button role="tab" data-scheda="pacchi" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z"/><path d="m3 8 9 5 9-5M12 13v8M7.5 5.5l9 5"/></svg>Pacchi</button>
 </div></nav>
 <div id="accesso">
   <span id="testaAccesso"></span>
@@ -729,7 +730,7 @@ $("#entra").onclick = () => {
 };
 document.addEventListener("visibilitychange", () => { if (!document.hidden && !bollaViva) carica(); });
 // ---------- Barra delle schede ----------
-// Chat è la pagina di sempre; Oggi, Salute, Cibo e Soldi sono viste della Plancia nello stesso iframe.
+// Chat è la pagina di sempre; Oggi, Salute, Cibo, Soldi e Pacchi sono viste della Plancia nello stesso iframe.
 const pagina = $("#pagina");
 function scheda(id) {
   document.querySelectorAll("#schede button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.scheda === id)));
@@ -751,7 +752,7 @@ addEventListener("message", e => {
 });
 { let s0 = "chat"; try { s0 = localStorage.getItem("daneel-scheda") || "chat"; } catch (e) {}
   if (location.search) s0 = "chat";   // aperta da una notifica: si va alla chat
-  scheda(["chat", "oggi", "salute", "cibo", "soldi"].includes(s0) ? s0 : "chat"); }
+  scheda(["chat", "oggi", "salute", "cibo", "soldi", "pacchi"].includes(s0) ? s0 : "chat"); }
 
 creaDaneel($("#testaAccesso"), {dimensione: 110, segui: true});
 umore(umoreBase());
