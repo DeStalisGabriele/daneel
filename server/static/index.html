@@ -395,7 +395,7 @@ function aggiornaInvia() {
     invia.innerHTML = {su: SVG_SU, mic: SVG_MIC, rec: SVG_MIC, stop: SVG_STOP}[modo];
     invia.setAttribute("aria-label", {su: "Invia", mic: "Tieni premuto per un vocale", rec: "Rilascia per inviare", stop: "Invia il vocale"}[modo]);
   }
-  invia.disabled = false;   // anche mentre Daneel risponde: il messaggio va in coda
+  invia.disabled = false;   // anche mentre Daneel risponde: lo legge subito
 }
 
 function nuovaBolla() {
@@ -416,6 +416,10 @@ function evento(ev) {
     const mie = chat.querySelectorAll(".msg.gabriele:not(.in-coda)"), ult = mie[mie.length - 1];
     if (ult) { const f = ult.querySelector(".foto-n"); ult.textContent = "🎤 " + ev.testo; if (f) ult.prepend(f); }
     giu();
+  }
+  else if (ev.tipo === "spezza") {   // Gabriele ha scritto a metà risposta: il seguito va in una bolla nuova, sotto il suo messaggio
+    clearTimeout(tParla); if (!b.testo.trim()) { b.el.remove(); if (!b.chip.children.length) b.chip.remove(); }
+    nuovaBolla();
   }
   else if (ev.tipo === "errore") { b.errore = true; aggiungiMsg({ruolo: "errore", testo: ev.testo}); giu(); }
   else if (ev.tipo === "pausa") { b.pausa = true; aggiungiMsg({ruolo: "sistema", testo: ev.testo}); giu(); }   // piano al limite
@@ -466,7 +470,8 @@ async function manda(vocale) {
   if (vocale) fd.append("audio", vocale.blob, "vocale" + vocale.est);
   const mio = aggiungiMsg({ruolo: "gabriele", testo: vocale ? "…" : t, foto: foto.filter(f => !f.nome).length, file: foto.filter(f => f.nome).map(f => f.nome), vocale: !!vocale, via: agente === "daneel" ? null : agente});
   testo.value = ""; foto = []; $("#anteprime").innerHTML = ""; aggiornaInvia(); giu();
-  // Se Daneel sta già rispondendo il messaggio va in coda: la risposta in corso resta dov'è.
+  // Se Daneel sta già rispondendo il messaggio gli arriva a metà lavoro (evento "spezza" sul flusso aperto);
+  // se invece ha appena finito, va in coda.
   const eraOccupato = occupato;
   if (!eraOccupato) { setOccupato(true); nuovaBolla(); }
   try {
@@ -478,7 +483,12 @@ async function manda(vocale) {
       return;
     }
     if ((r.headers.get("content-type") || "").includes("application/json")) {
-      const j = await r.json();   // {in_coda, id, posizione, pausa_fino}
+      const j = await r.json();   // {letto, id, testo?} se Daneel l'ha letto a metà lavoro, altrimenti {in_coda, id, posizione, pausa_fino}
+      if (j.letto) {
+        if (j.testo) { const f = mio.querySelector(".foto-n"); mio.textContent = "🎤 " + j.testo; if (f) mio.prepend(f); }
+        if (!eraOccupato && bollaViva) { bollaViva.el.remove(); bollaViva.chip.remove(); bollaViva = null; setOccupato(false); carica(); }
+        giu(); return;
+      }
       segnaInCoda(mio, j.id); codaN = j.posizione; pausaFino = (j.pausa_fino || 0) * 1000; giu();
       if (!eraOccupato && bollaViva) { bollaViva.el.remove(); bollaViva.chip.remove(); bollaViva = null; setOccupato(false); umore(umoreBase()); }
       else if (!occupato) setStato(statoPronto());

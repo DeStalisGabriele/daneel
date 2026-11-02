@@ -54,6 +54,12 @@ VAPID_PUB = CONFIG / "vapid-pubblica.txt"
 # chi manda le notifiche: un URL https senza porta (lo vuole py_vapid), per esempio l'indirizzo del server sulla tailnet
 VAPID_SUB = os.environ.get("DANEEL_VAPID_SUB", "mailto:daneel@example.com")  # py_vapid vuole un mailto: o un URL https senza percorso
 VISIBILE_PER = 25  # secondi: se l'app non dà segni di vita da più di così, a fine risposta parte la notifica
+NOTA_LETTO = """[Messaggio di Gabriele arrivato mentre stavi lavorando. Leggilo subito. Se corregge o cambia quello \
+che stai facendo, tienine conto adesso. Se è una richiesta nuova e indipendente, decidi tu se farla subito o dopo aver \
+finito il compito in corso; se la rimandi, diglielo in una riga e poi falla prima di chiudere.]
+
+"""
+
 EMOJI = {"daneel": "🤖", "calendario": "📅", "postino": "✉️", "nutrizionista": "🥗", "amanuense": "✍️"}
 
 SISTEMA = """Stai parlando con Gabriele dall'app "Daneel" sul suo iPhone, non da Telegram.
@@ -165,14 +171,18 @@ class Turno:
         self.fatto = False
         self.cambiato = asyncio.Condition()
         self.inizio = time.time()
+        self.proc = None  # il processo di claude: finché il turno è "aperto" gli si possono passare messaggi nuovi
+        self.aperto = False
+        self.risposta = ""  # il testo scritto da Daneel dall'ultimo messaggio di Gabriele
+        self.base = 0  # da dove riparte chi si ricollega: dopo l'ultimo messaggio letto a metà turno
 
     async def aggiungi(self, ev: dict):
         async with self.cambiato:
             self.eventi.append(ev)
             self.cambiato.notify_all()
 
-    async def segui(self):
-        i = 0
+    async def segui(self, da_capo: bool = True):
+        i = 0 if da_capo else self.base
         while True:
             async with self.cambiato:
                 while i >= len(self.eventi) and not self.fatto:
@@ -339,6 +349,37 @@ async def notifica(titolo: str, testo: str, agente: str = "daneel"):
     return await asyncio.to_thread(_manda_push, {"titolo": titolo, "testo": pulito, "agente": agente})
 
 
+def _riga_utente(testo: str) -> bytes:
+    return (json.dumps({"type": "user", "message": {"role": "user", "content": testo}}, ensure_ascii=False) + "\n").encode()
+
+
+def _aperto(t: "Turno | None") -> bool:
+    return t is not None and not t.fatto and t.aperto and t.proc is not None and t.proc.stdin is not None \
+        and not t.proc.stdin.is_closing()
+
+
+async def _inietta(t: "Turno | None", prompt: str, voce_msg: dict) -> bool:
+    """Passa un messaggio di Gabriele al turno in corso, a metà lavoro. Va chiamata con _lucchetto. La risposta
+    scritta fin qui diventa un messaggio a sé, così nella chat il seguito compare sotto il nuovo messaggio."""
+    if not _aperto(t):
+        return False
+    try:
+        t.proc.stdin.write(_riga_utente(NOTA_LETTO + prompt))
+        await t.proc.stdin.drain()
+    except Exception:  # noqa: BLE001
+        log.exception("messaggio a metà turno non passato")
+        return False
+    storia = _leggi_storia(t.agente)
+    if t.risposta.strip():
+        storia["messaggi"].append({"ruolo": "daneel", "testo": t.risposta.strip(), "ts": time.time()})
+    t.risposta = ""
+    storia["messaggi"].append({**voce_msg, "letto": True})
+    _scrivi_storia(t.agente, storia)
+    await t.aggiungi({"tipo": "spezza", "id": voce_msg["id"]})
+    t.base = len(t.eventi)
+    return True
+
+
 async def _trascrivi(audio: Path) -> str:
     """Il vocale registrato dall'app, con lo stesso Whisper dei vocali di Telegram (~/bin/trascrivi, sulla GPU)."""
     proc = await asyncio.create_subprocess_exec(str(HOME / "bin/trascrivi"), str(audio), stdin=asyncio.subprocess.DEVNULL,
@@ -375,21 +416,29 @@ async def _esegui(t: Turno, prompt: str, audio: Path | None = None):
         if t.voce:  # se il piano è al limite la voce torna in coda già trascritta
             t.voce.update(prompt=prompt, vocale=None, testo=detto)
     storia = _leggi_storia(t.agente)
-    cmd = [str(CLAUDE), "-p", prompt, "--output-format", "stream-json", "--verbose", "--include-partial-messages",
+    # Input in streaming: stdin resta aperto finché arriva il primo "result", così i messaggi mandati da Gabriele
+    # mentre Daneel lavora gli arrivano a metà turno (come in Claude Code), invece di aspettare in coda.
+    cmd = [str(CLAUDE), "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
+           "--include-partial-messages",
            "--settings", str(HOME / ".claude/app-settings.json"),
            "--append-system-prompt", SISTEMA + (SISTEMA_TIMER if t.timer else "")]
     if storia.get("sessione"):
         cmd += ["--resume", storia["sessione"]]
     env = {**os.environ, "PATH": f"{HOME}/.local/bin:{HOME}/bin:{os.environ.get('PATH', '/usr/bin:/bin')}"}
-    risposta, sessione, errore = "", storia.get("sessione"), None
+    t.risposta = ""
+    sessione, errore = storia.get("sessione"), None
     limite = None  # il piano è al limite: quando si azzera (secondi Unix, 0 se non si sa)
     try:
         proc = await asyncio.create_subprocess_exec(
-            *cmd, cwd=HOME / "claude-mind", env=env, stdin=asyncio.subprocess.DEVNULL,
+            *cmd, cwd=HOME / "claude-mind", env=env, stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, limit=16 * 1024 * 1024)
+        proc.stdin.write(_riga_utente(prompt))
+        await proc.stdin.drain()
+        async with _lucchetto:
+            t.proc, t.aperto = proc, True
         strumenti: dict[int, dict] = {}
         async def leggi():
-            nonlocal risposta, sessione, errore, limite
+            nonlocal sessione, errore, limite
             async for riga in proc.stdout:
                 try:
                     m = json.loads(riga)
@@ -403,7 +452,7 @@ async def _esegui(t: Turno, prompt: str, audio: Path | None = None):
                     elif e["type"] == "content_block_delta":
                         d = e["delta"]
                         if d["type"] == "text_delta":
-                            risposta += d["text"]
+                            t.risposta += d["text"]
                             await t.aggiungi({"tipo": "testo", "testo": d["text"]})
                         elif d["type"] == "input_json_delta" and e["index"] in strumenti:
                             strumenti[e["index"]]["json"] += d["partial_json"]
@@ -414,11 +463,21 @@ async def _esegui(t: Turno, prompt: str, audio: Path | None = None):
                         except json.JSONDecodeError:
                             inp = {}
                         await t.aggiungi({"tipo": "strumento", "nome": _nome_strumento(s["nome"], inp)})
-                    elif e["type"] == "message_start" and risposta and not risposta.endswith("\n\n"):
-                        risposta += "\n\n"  # un nuovo messaggio dopo gli strumenti: a capo
+                    elif e["type"] == "message_start" and t.risposta and not t.risposta.endswith("\n\n"):
+                        t.risposta += "\n\n"  # un nuovo messaggio dopo gli strumenti: a capo
                         await t.aggiungi({"tipo": "testo", "testo": "\n\n"})
-                elif m.get("type") == "result" and m.get("is_error"):
-                    errore = m.get("result") or "errore di Claude"
+                elif m.get("type") == "result":
+                    # Fine del compito: da qui i messaggi nuovi tornano in coda. Chiudere stdin fa uscire claude
+                    # dopo aver risposto anche a un messaggio arrivato proprio adesso (già nel suo buffer).
+                    async with _lucchetto:
+                        if t.aperto:
+                            t.aperto = False
+                            try:
+                                proc.stdin.close()
+                            except Exception:  # noqa: BLE001
+                                pass
+                    if m.get("is_error"):
+                        errore = m.get("result") or "errore di Claude"
                 elif m.get("type") == "rate_limit_event":
                     info = m.get("rate_limit_info", {})
                     if info.get("status") not in ("allowed", "allowed_warning", None) and \
@@ -427,7 +486,7 @@ async def _esegui(t: Turno, prompt: str, audio: Path | None = None):
                         errore = "Limite del piano raggiunto: riprova dopo il reset."
         await asyncio.wait_for(leggi(), TIMEOUT)
         await proc.wait()
-        if proc.returncode and not errore and not risposta:
+        if proc.returncode and not errore and not t.risposta:
             errore = (await proc.stderr.read()).decode(errors="replace")[-500:] or f"claude è uscito con {proc.returncode}"
     except asyncio.TimeoutError:
         proc.kill()
@@ -435,6 +494,10 @@ async def _esegui(t: Turno, prompt: str, audio: Path | None = None):
     except Exception as ex:  # noqa: BLE001
         log.exception("turno fallito")
         errore = str(ex)
+    finally:
+        async with _lucchetto:
+            t.aperto = False
+    risposta = t.risposta
 
     if limite is None and errore and _e_limite(errore):
         limite = 0
@@ -538,11 +601,28 @@ async def messaggio(testo: str = Form(""), agente: str = Form("daneel"), foto: l
         foto_txt += ("\n\n[File allegati: " + ", ".join(allegati) + "]") if allegati else ""
         nota = NOTA_SUB.format(via) if via != "daneel" else ""
         prompt = (foto_txt if vocale else (testo or "(nessun testo)") + foto_txt) + nota
+        voce_msg = {"ruolo": "gabriele", "testo": "…" if vocale else testo, "foto": len(percorsi),
+                    "file": [Path(a).name for a in allegati], "vocale": bool(vocale), "via": via if via != "daneel" else None,
+                    "ts": time.time(), "id": id_}
+        if not vocale and await _inietta(turno, prompt, voce_msg):
+            return {"letto": True, "id": id_}
+        aspetta_vocale = bool(vocale) and _aperto(turno)
+    if aspetta_vocale:
+        # Daneel sta lavorando: il vocale si trascrive subito (fuori dal lucchetto) e gli arriva come testo.
+        try:
+            detto = await _trascrivi(vocale)
+        except Exception:  # noqa: BLE001
+            log.exception("trascrizione fallita")
+            detto = ""
+        if detto:
+            async with _lucchetto:
+                voce_msg["testo"] = detto
+                if await _inietta(turno, detto + prompt, voce_msg):
+                    return {"letto": True, "id": id_, "testo": detto}
+                prompt, vocale, testo = detto + prompt, None, detto  # finito nel frattempo: va in coda già trascritto
+    async with _lucchetto:
         storia = _leggi_storia(agente)
-        storia["messaggi"].append({"ruolo": "gabriele", "testo": "…" if vocale else testo, "foto": len(percorsi),
-                                   "file": [Path(a).name for a in allegati],
-                                   "vocale": bool(vocale), "via": via if via != "daneel" else None,
-                                   "ts": time.time(), "id": id_, "coda": True})
+        storia["messaggi"].append({**voce_msg, "testo": "…" if vocale else testo, "coda": True})
         _scrivi_storia(agente, storia)
         _accoda({"id": id_, "prompt": prompt, "vocale": str(vocale) if vocale else None, "testo": testo})
         t = _prossimo()
@@ -578,7 +658,7 @@ async def segui(agente: str = "daneel", authorization: str | None = Header(None)
     _controlla(authorization)
     if turno is None or turno.fatto or turno.agente != _agente(agente):
         raise HTTPException(404, "nessun turno in corso")
-    return StreamingResponse(turno.segui(), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
+    return StreamingResponse(turno.segui(da_capo=False), media_type="text/event-stream", headers={"Cache-Control": "no-cache"})
 
 
 @app.post("/api/nuova")
