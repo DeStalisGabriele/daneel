@@ -112,7 +112,8 @@ html.tastiera footer { padding-bottom: 8px !important; }
 html.plancia #pagina { display: block; }
 html.plancia body > header, html.plancia #chat, html.plancia body > footer, html.plancia #velo { display: none !important; }
 .barra { display: flex; align-items: flex-end; gap: 2px; }
-#allega, #agenti { margin-bottom: -2px; }
+.allega, #agenti { margin-bottom: -2px; }
+#documento { width: 34px; }  /* più stretta: la barra resta larga per scrivere */
 #agenti { position: relative; }
 #agenti .mini { width: 32px; height: 32px; display: grid; place-items: center; }
 #agenti::after { content: ""; position: absolute; right: 3px; bottom: 7px; width: 7px; height: 7px; border-radius: 50%;
@@ -141,8 +142,8 @@ html.plancia body > header, html.plancia #chat, html.plancia body > footer, html
   color: var(--testo); font-size: 17px; line-height: 22px; outline: none; white-space: pre-wrap; overflow-wrap: anywhere;
   -webkit-user-select: text; user-select: text; cursor: text; }
 #testo:empty::before { content: attr(data-placeholder); color: var(--tenue); pointer-events: none; }
-#allega { position: relative; overflow: hidden; }
-#allega input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; font-size: 0; cursor: pointer; }
+.allega { position: relative; overflow: hidden; }
+.allega input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; font-size: 0; cursor: pointer; }
 #invia { position: relative; flex: none; width: 32px; height: 32px; margin-left: 6px; border-radius: 50%;
   display: grid; place-items: center; background: var(--mio); color: #fff; transition: background .15s; }
 #invia::after { content: ""; position: absolute; inset: -6px; }  /* area di tocco di 44 pt (regole Apple) */
@@ -154,7 +155,7 @@ html.plancia body > header, html.plancia #chat, html.plancia body > footer, html
 #reg { flex: 1; display: none; align-items: center; gap: 8px; height: 32px; color: var(--testo); font-variant-numeric: tabular-nums; }
 footer.registra #reg { display: flex; }
 footer.registra textarea { display: none; }
-footer.registra #allega, footer.registra #agenti { display: none; }
+footer.registra .allega, footer.registra #agenti { display: none; }
 #reg .punto { width: 10px; height: 10px; border-radius: 50%; background: #ff3b30; animation: b 1s infinite; }
 #reg .annulla { margin-left: auto; color: #ff3b30; font-size: 16px; padding: 0 8px; min-height: 32px; display: none; }
 #scorri { margin-left: auto; margin-right: 6px; color: var(--tenue); font-size: 15px; white-space: nowrap; transition: opacity .1s; }
@@ -206,9 +207,14 @@ footer.registra:not(.bloccato) #lucchetto { display: flex; }
     <button class="icona" id="agenti" aria-label="Scegli con chi parlare" aria-haspopup="menu"><span class="mini"></span></button>
     <!-- Il campo file sta, invisibile, proprio sopra la fotocamera: si tocca lui, e iOS apre il suo menu
          (Libreria foto, Scatta foto…) da lì invece che da un punto a caso dello schermo. -->
-    <span class="icona" id="allega">
+    <span class="icona allega" id="allega">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      <input type="file" id="file" accept="image/*" multiple aria-label="Allega foto">
+    </span>
+    <!-- Senza accept=image/* iOS non offre "Scatta foto": per i documenti c'è un tasto a parte. -->
+    <span class="icona allega" id="documento">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-      <input type="file" id="file" multiple aria-label="Allega foto o file">
+      <input type="file" id="file2" multiple aria-label="Allega file">
     </span>
     <div class="campo">
       <!-- Campo modificabile invece di una textarea: iOS non ci mette sopra la barra dei moduli (˄ ˅ ✓). -->
@@ -510,7 +516,7 @@ function riduci(file) {
     img.src = url;
   });
 }
-$("#file").onchange = async e => {
+$("#file").onchange = $("#file2").onchange = async e => {
   for (const f of [...e.target.files].slice(0, 6 - foto.length)) {
     // Le immagini si riducono; tutto il resto (PDF, documenti…) parte com'è, con il suo nome.
     const immagine = f.type.startsWith("image/") && !/svg/.test(f.type);
