@@ -120,7 +120,7 @@ Configuration (environment variables):
 | --- | --- | --- |
 | `DANEEL_DATI` | `~/.local/share/daneel-app` | chat history, uploads, dashboard database, caches |
 | `DANEEL_CONFIG` | `~/.config/daneel-app` | token, VAPID keys, push subscriptions, calendar feeds |
-| `DANEEL_VAPID_SUB` | this repo's URL | contact URL sent to push services (must be `https`, no port) |
+| `DANEEL_VAPID_SUB` | `mailto:daneel@example.com` | contact sent to push services: a `mailto:` address or a bare `https://host` (no path, no port) |
 
 Claude Code runs in `~/claude-mind` with `--settings ~/.claude/app-settings.json`; point these at your own memory folder and permission settings. Voice transcription expects a `~/bin/trascrivi` script (e.g. whisper.cpp) that prints the text of an audio file.
 
