@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Aggiunge un pacco alla scheda Pacchi dell'app (per Daneel, quando trova un codice di spedizione nelle mail).
 
-  pacco "CODICE" ["nome breve"]      es. pacco 1UW1WEZAMFKLA "Felpa venduta su Vinted"
+  pacco "CODICE" ["nome breve"]      es. pacco RR123456789IT "Felpa venduta su Vinted"
 
 Se il pacco c'è già non succede niente (al più cambia il nome). Stampa corriere e fase in JSON.
 """
