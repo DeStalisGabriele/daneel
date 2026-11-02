@@ -44,7 +44,7 @@ ISCRIZIONI = DATI / "iscrizioni.json"  # i telefoni iscritti alle notifiche (Web
 VAPID_PEM = CONFIG / "vapid.pem"
 VAPID_PUB = CONFIG / "vapid-pubblica.txt"
 # chi manda le notifiche: un URL https senza porta (lo vuole py_vapid), per esempio l'indirizzo del server sulla tailnet
-VAPID_SUB = os.environ.get("DANEEL_VAPID_SUB", "https://github.com/DeStalisGabriele/daneel")
+VAPID_SUB = os.environ.get("DANEEL_VAPID_SUB", "mailto:daneel@example.com")  # py_vapid vuole un mailto: o un URL https senza percorso
 VISIBILE_PER = 25  # secondi: se l'app non dà segni di vita da più di così, a fine risposta parte la notifica
 EMOJI = {"daneel": "🤖", "calendario": "📅", "postino": "✉️", "nutrizionista": "🥗", "amanuense": "✍️"}
 
