@@ -78,6 +78,17 @@ log = logging.getLogger("daneel-app")
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
 
+@app.middleware("http")
+async def _sempre_fresca(request, call_next):
+    """Senza Cache-Control, Safari tiene plancia.html e i .js della Plancia con la sua cache "euristica" e dopo un
+    aggiornamento l'app mostra la versione vecchia (successo con la scheda Pacchi, 2026-11-02). no-cache non
+    rinuncia alla cache: chiede solo al server se il file è cambiato (ETag), quindi costa poco."""
+    risposta = await call_next(request)
+    if request.url.path.endswith((".html", ".js", ".css", ".json", "/")):
+        risposta.headers.setdefault("Cache-Control", "no-cache")
+    return risposta
+
+
 def _token() -> str:
     if not TOKEN_FILE.exists():
         TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)

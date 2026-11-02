@@ -736,7 +736,8 @@ function scheda(id) {
   document.querySelectorAll("#schede button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.scheda === id)));
   document.documentElement.classList.toggle("plancia", id !== "chat");
   if (id !== "chat") {
-    if (!pagina.src) pagina.src = "plancia.html#" + id;
+    // ?v=: un indirizzo nuovo scavalca le copie vecchie che Safari teneva in cache prima del no-cache (2026-11-02)
+    if (!pagina.src) pagina.src = "plancia.html?v=2#" + id;
     else if (pagina.contentWindow) pagina.contentWindow.location.hash = id;
     testo.blur();
   } else requestAnimationFrame(giu);
