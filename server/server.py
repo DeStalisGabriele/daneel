@@ -28,6 +28,7 @@ from fastapi.staticfiles import StaticFiles
 
 import cibo
 import pacchi
+import studio
 import plancia
 
 HOME = Path.home()
@@ -823,4 +824,6 @@ cibo.collega(_controlla)  # la scheda Cibo: Open Food Facts e pasti aggiunti a m
 app.include_router(cibo.router)
 pacchi.collega(_controlla, notifica)  # la scheda Pacchi: tracking da Poste, InPost e Ship24
 app.include_router(pacchi.router)
+studio.collega(_controlla)  # la sezione Studio: quando cominciare a studiare per ogni esame (solo conti)
+app.include_router(studio.router)
 app.mount("/", StaticFiles(directory=QUI / "static"), name="static")
