@@ -239,7 +239,7 @@ footer{font-size:var(--t-foot);color:var(--muted);padding-inline:4px;line-height
 @media (hover:hover){.tile.tap:hover,.lift.tap:hover{background:color-mix(in srgb,var(--surface) 94%,var(--ink))}}
 .sheet-back{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.4);display:grid;place-items:center;padding:16px;animation:fade .18s ease-out}
 @keyframes fade{from{opacity:0}}
-.sheet{background:var(--surface);border-radius:20px;width:min(720px,100%);max-height:calc(100dvh - 32px);overflow:auto;padding:18px 18px 20px;display:grid;gap:14px;align-content:start;box-shadow:0 16px 48px var(--shadow);animation:sheet .22s cubic-bezier(.2,.8,.2,1)}
+.sheet{background:var(--surface);border-radius:20px;width:min(720px,100%);max-height:calc(100dvh - 32px);overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-x pan-y;padding:18px 18px 20px;display:grid;gap:14px;align-content:start;box-shadow:0 16px 48px var(--shadow);animation:sheet .22s cubic-bezier(.2,.8,.2,1)}
 @media (max-width:600px){.sheet-back{place-items:end stretch;padding:0}.sheet{border-radius:20px 20px 0 0;max-height:90dvh;padding-bottom:calc(20px + env(safe-area-inset-bottom,0px))}}
 .sheet-head{display:grid;grid-template-columns:minmax(0,1fr) 30px;gap:12px;align-items:start}
 .sheet-head h2{color:var(--accent)}
@@ -1346,9 +1346,11 @@ function spRow(k, tot, onClick){
   el.children[3].textContent=tot? fmtNum(k.tot/tot*100,0)+"%" : "";
   return el;
 }
+// iOS: in the iframe dvh is unreliable, so the sheet gets a height in px from the real screen (as in Pacchi)
+function fitSheet(id){ const s=document.getElementById(id).querySelector(".sheet"), h=(window.visualViewport?.height||innerHeight); s.style.maxHeight=Math.round(innerWidth<=600 ? h*0.9 : h-32)+"px"; s.scrollTop=0; }
 function openSpese(cat){
   spOpenCat=cat||null;
-  document.getElementById("spBack").hidden=false; document.body.style.overflow="hidden";
+  document.getElementById("spBack").hidden=false; document.body.style.overflow="hidden"; fitSheet("spBack");
   renderSpSheet(); document.getElementById("spClose").focus();
 }
 function closeSpese(){ document.getElementById("spBack").hidden=true; document.body.style.overflow=""; }
@@ -1390,7 +1392,7 @@ let detail = null;      // {spec, period, selK}
 function firstKey(){ let f=START; for(const k of Object.keys(health)) if(k<f) f=k; for(const w of Object.values(gym)) if(w&&w.data&&w.data<f) f=w.data; return f; }
 function openDetail(spec){
   detail={spec, period: spec.kind==="week"?"12":"30", selK:null};
-  document.getElementById("detailBack").hidden=false; document.body.style.overflow="hidden";
+  document.getElementById("detailBack").hidden=false; document.body.style.overflow="hidden"; fitSheet("detailBack");
   renderDetail(); document.getElementById("detailClose").focus();
 }
 function closeDetail(){ detail=null; document.getElementById("detailBack").hidden=true; document.body.style.overflow=""; }
@@ -1576,6 +1578,8 @@ renderAll();
   document.addEventListener("keydown", e=>{ if(e.key==="Escape" && !panel.hidden){ set(false); fab.focus(); } });
   document.addEventListener("click", e=>{ if(!panel.hidden && !panel.contains(e.target) && !fab.contains(e.target)) set(false); });
 })();
+// the Plancia is one iframe for every tab: switching tab only changes the #, so open sheets and panels are closed by hand
+addEventListener("hashchange", ()=>{ if(!document.getElementById("detailBack").hidden) closeDetail(); if(!document.getElementById("spBack").hidden) closeSpese(); const p=document.getElementById("botPanel"); if(!p.hidden){ p.hidden=true; document.getElementById("botFab").setAttribute("aria-expanded","false"); } });
 // compact navigation bar once the large title has scrolled away, as in iOS
 try{
   const nav=document.getElementById("navbar");
