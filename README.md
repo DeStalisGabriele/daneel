@@ -43,9 +43,9 @@ A floating, translucent tab bar in the style of iOS 26 Health switches between t
 
 | Tab | What it shows |
 | --- | --- |
-| **Oggi** (Today) | Daily habits with streaks, meals checklist, calendar agenda (any iCal feed), trends, current book |
+| **Oggi** (Today) | Daily habits with streaks, meals checklist, **exam study planner**, calendar agenda (any iCal feed), trends, current book |
 | **Salute** (Health) | **Sleep, Recovery and Strain rings** (0–100), sleep details, workouts (Hevy) and Muay Thai sessions |
-| **Cibo** (Food) | Today's meals with calories and macros, **barcode scanner** and product search via [Open Food Facts](https://world.openfoodfacts.org), weight log |
+| **Cibo** (Food) | Today's meals with calories and macros, **barcode scanner** and product search via [Open Food Facts](https://world.openfoodfacts.org) plus your own products, weight log |
 | **Soldi** (Money) | Portfolio value, gains, cash and categorized spending across accounts |
 | **Pacchi** (Parcels) | Paste a tracking code and get the parcel's route on a timeline, with a push notification at every stage |
 
@@ -59,11 +59,32 @@ The dashboard is a single HTML page originally built as a claude.ai Artifact. A 
 
 Tap a ring to see exactly how the number was calculated.
 
+### Exam study planner
+For every exam, [`studio.py`](server/studio.py) works out when to start studying and how to split the time — again with no model call:
+- **Measures the course folder:** words and images of your notes file (projected to the end of the course, since it grows with every lecture), pages of exercise PDFs and past exam papers (counted once per date, even if you have several copies).
+- **Turns material into hours** with stated assumptions: ~140 words per minute when reading to learn, a fixed time per exercise page, each mock exam worth its duration plus correction, a last week of review only. The total is checked against the official workload of the credits (1 ECTS = 25 h).
+- **Fills your free days backwards** from each exam (at most 4 h of active study a day, minus calendar events), earliest exam first, and tells you how many hours are missing when time runs out.
+- **Estimates that move:** while lessons go on, exercise hours blend what's in the folder with an expected share of the credits, and a daily history shows how the plan changed.
+
+The card shows one lane per exam on a timeline (theory, exercises, mock exams, review, exam day); tap a lane for the phases, the measured material and plain study tips such as spaced reviews.
+
+<p align="center">
+  <img src="docs/screenshots/9-studio.png" width="230" alt="Study planner timeline">
+  <img src="docs/screenshots/10-studio-dettaglio.png" width="230" alt="Study plan phases for one exam">
+</p>
+
 ### Food logging without an LLM
 Scan a barcode (ZXing in the browser) or search by name, pick the grams and the meal: [`cibo.py`](server/cibo.py) does the math from Open Food Facts' per-100 g values. No model call, no tokens — Claude is only needed when you want to log a meal from a photo.
 
+If a barcode isn't on Open Food Facts, a **New product** sheet lets you type the values from the label, or jump to the chat and send Daneel a photo of the label to read them for you. Your products are stored in the dashboard database and are looked up first next time.
+
 ### Parcel tracking, free carriers first
 [`pacchi.py`](server/pacchi.py) asks the free public endpoints of Poste Italiane/SDA and InPost first, and falls back to [Ship24](https://www.ship24.com) (free tier: 10 parcels a month, key in `~/.config/daneel-app/ship24`) for Amazon, DHL, GLS, BRT, UPS, Mondial Relay and the rest. An hourly check refreshes parcels in transit and sends a notification when the stage changes; delivered parcels disappear after 14 days. The morning mail summary adds tracking codes it finds with [`bin/pacco`](bin/pacco).
+
+<p align="center">
+  <img src="docs/screenshots/12-cibo-nuovo.png" width="230" alt="New product from a barcode that wasn't found">
+  <img src="docs/screenshots/11-pacchi.png" width="230" alt="Parcels">
+</p>
 
 ### The mascot
 Daneel has an animated robot face that reacts to what's happening (calm, listening, thinking, talking, happy, sleeping, confused), and each subagent has its own look.
@@ -90,7 +111,8 @@ server/
   server.py              FastAPI app: chat, streaming, voice, photos, push, auth
   plancia.py             dashboard store (SQLite), SSE events, iCal agenda, scores endpoint
   punteggi.py            Sleep / Recovery / Strain scores
-  cibo.py                Open Food Facts lookup + meal logging
+  cibo.py                Open Food Facts lookup, your own products, meal logging
+  studio.py              exam study planner (material → hours → days)
   costruisci-plancia.py  builds static/plancia.html from plancia-sorgente.html
   static/                PWA: index.html (chat + tab bar), mascot, service worker, dashboard add-ons
 bin/                     CLI helpers used by skills and scheduled jobs
@@ -128,14 +150,15 @@ Configuration (environment variables):
 | `DANEEL_CONFIG` | `~/.config/daneel-app` | token, VAPID keys, push subscriptions, calendar feeds |
 | `DANEEL_CLAUDE` | `~/.local/bin/claude` | the Claude Code binary (point it to a fake script to test without using your plan) |
 | `DANEEL_VAPID_SUB` | `mailto:daneel@example.com` | contact sent to push services: a `mailto:` address or a bare `https://host` (no path, no port) |
+| `DANEEL_UNI` | `~/universita/magistrale/anno 1` | course folders read by the study planner (one folder per course, with a `TEORIA.docx` and PDFs) |
 
 Claude Code runs in `~/claude-mind` with `--settings ~/.claude/app-settings.json`; point these at your own memory folder and permission settings. Voice transcription expects a `~/bin/trascrivi` script (e.g. whisper.cpp) that prints the text of an audio file.
 
 ### Try it with fake data
 
 ```bash
-DANEEL_DATI=/tmp/daneel-demo/dati DANEEL_CONFIG=/tmp/daneel-demo/config python3 tools/demo-dati.py
-DANEEL_DATI=/tmp/daneel-demo/dati DANEEL_CONFIG=/tmp/daneel-demo/config \
+python3 tools/demo-dati.py /tmp/daneel-demo
+DANEEL_DATI=/tmp/daneel-demo/dati DANEEL_CONFIG=/tmp/daneel-demo/config DANEEL_UNI=/tmp/daneel-demo/corsi \
   server/.venv/bin/uvicorn --app-dir server server:app --port 8799
 ```
 

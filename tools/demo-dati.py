@@ -1,8 +1,9 @@
 """Dati inventati per provare l'app (e per gli screenshot del README) senza toccare quelli veri.
 
 Uso:  python3 tools/demo-dati.py /tmp/daneel-demo
-Crea <cartella>/dati (plancia.db, chat.json) e <cartella>/config (token "demo", calendario d'esempio). Poi:
-  DANEEL_DATI=<cartella>/dati DANEEL_CONFIG=<cartella>/config .venv/bin/uvicorn server:app --port 8799
+Crea <cartella>/dati (plancia.db, chat.json), <cartella>/config (token "demo", calendario d'esempio) e <cartella>/corsi
+(materiale finto per la sezione Studio). Poi:
+  DANEEL_DATI=<cartella>/dati DANEEL_CONFIG=<cartella>/config DANEEL_UNI=<cartella>/corsi .venv/bin/uvicorn server:app --port 8799
 e nell'app si entra con il codice "demo". Tutti i numeri sono casuali, con un seme fisso.
 """
 
@@ -148,8 +149,6 @@ for x in range(60):
     if d.day == 1:
         mov.append({"d": k(d), "n": "Stipendio (demo)", "v": 900.0, "conto": "Conto A", "tipo": "bonifico", "cat": "Entrate"})
 metti("portafoglio", "spese", {"aggiornato": k(oggi), "movimenti": mov})
-c.commit()
-c.close()
 
 # Calendario d'esempio (un file .ics locale: il server lo legge come se fosse l'indirizzo segreto di Google)
 ev, n = [], 0
@@ -163,6 +162,64 @@ for x in range(-2, 8):
 ics = radice / "agenda-demo.ics"
 ics.write_text("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Daneel demo//IT\r\nX-WR-TIMEZONE:Europe/Rome\r\n" + "\r\n".join(ev) + "\r\nEND:VCALENDAR\r\n")
 (config / "calendari.json").write_text(json.dumps({"calendari": [{"nome": "Demo", "ics": ics.resolve().as_uri()}]}))
+
+# Pacchi d'esempio (codici inventati)
+def ev(giorni_fa, ora, dove, cosa, fase):
+    return {"quando": f"{oggi - timedelta(days=giorni_fa)}T{ora}:00+01:00", "dove": dove, "cosa": cosa, "fase": fase}
+metti("pacchi", "DEMO000123456IT", {"codice": "DEMO000123456IT", "nome": "Cavo USB-C", "corriere": "Poste Italiane", "fonte": "poste",
+    "fase": "consegna", "aggiunto": str(oggi - timedelta(days=3)), "controllato": time.time(), "eventi": [
+        ev(3, "10:12", "Milano", "Spedizione accettata", "attesa"), ev(2, "06:40", "Centro di smistamento Bologna", "In transito", "viaggio"),
+        ev(1, "21:05", "Torino", "Arrivata al centro di distribuzione", "viaggio"), ev(0, "08:02", "Torino", "In consegna", "consegna")]})
+metti("pacchi", "DEMO987654321000000000000", {"codice": "DEMO987654321000000000000", "nome": "Paratibie", "corriere": "InPost", "fonte": "inpost",
+    "fase": "viaggio", "aggiunto": str(oggi - timedelta(days=1)), "controllato": time.time(), "eventi": [
+        ev(1, "15:30", "", "Etichetta creata", "attesa"), ev(0, "07:15", "", "In viaggio verso il locker", "viaggio")]})
+
+# Studio: due corsi d'esempio con un TEORIA.docx e qualche PDF finti, per la sezione Studio (studio.py, DANEEL_UNI)
+import zipfile  # noqa: E402
+
+def pdf(percorso, pagine):
+    """Un PDF minimo valido con N pagine vuote (pdfinfo ne legge il numero)."""
+    ogg = ["<< /Type /Catalog /Pages 2 0 R >>",
+           "<< /Type /Pages /Kids [" + " ".join(f"{3 + i} 0 R" for i in range(pagine)) + f"] /Count {pagine} >>"]
+    ogg += ["<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] >>"] * pagine
+    out, pos = b"%PDF-1.4\n", []
+    for i, o in enumerate(ogg, 1):
+        pos.append(len(out)); out += f"{i} 0 obj\n{o}\nendobj\n".encode()
+    xref = len(out)
+    out += f"xref\n0 {len(ogg) + 1}\n0000000000 65535 f \n".encode() + b"".join(f"{p:010d} 00000 n \n".encode() for p in pos)
+    out += f"trailer\n<< /Size {len(ogg) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
+    percorso.parent.mkdir(parents=True, exist_ok=True); percorso.write_bytes(out)
+
+def teoria(percorso, parole, immagini):
+    testo = " ".join(random.choice(["mercato", "domanda", "offerta", "costo", "prezzo", "equilibrio", "impresa", "bilancio"]) for _ in range(parole))
+    percorso.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(percorso, "w") as z:
+        z.writestr("word/document.xml", f"<w:document><w:body><w:p><w:r><w:t>{testo}</w:t></w:r></w:p></w:body></w:document>")
+        for i in range(immagini):
+            z.writestr(f"word/media/image{i}.png", b"")
+
+corsi = radice / "corsi"
+teoria(corsi / "Microeconomia" / "TEORIA.docx", 30000, 40)
+pdf(corsi / "Microeconomia" / "Esercizi" / "Esercizi capitolo 1-6.pdf", 40)
+for d in ("12-01-2026", "02-02-2026"):
+    pdf(corsi / "Microeconomia" / "Esercizi" / f"Appello {d}.pdf", 4)
+teoria(corsi / "Contabilità" / "TEORIA.docx", 24000, 15)
+pdf(corsi / "Contabilità" / "Esercizi" / "Esercizi di contabilità.pdf", 70)
+for d in ("19-01-2026", "09-02-2026", "26-01-2025", "16-02-2025"):
+    pdf(corsi / "Contabilità" / "Esercizi" / f"Appello {d}.pdf", 6)
+g = lambda n: str(oggi + timedelta(days=n))  # noqa: E731
+metti("studio", "impostazioni", {
+    "esami": [
+        {"id": "micro", "nome": "Microeconomia", "breve": "MICRO", "cartella": "Microeconomia", "data": g(70), "riserva": g(86),
+         "tipo": "scritto", "durata_ore": 1, "cfu": 8, "nota": "Scritto di 1 ora."},
+        {"id": "conta", "nome": "Contabilità", "breve": "CONTA", "cartella": "Contabilità", "data": g(77), "riserva": g(91),
+         "tipo": "pc", "durata_ore": 2, "cfu": 8, "nota": "Esame al PC + progetto di gruppo.",
+         "scadenze": [{"nome": "Consegna del progetto", "giorni_prima": 10}]},
+    ],
+    "inizio_sessione": g(45), "inizio_lezioni": g(-45), "fine_lezioni": g(60), "festivi": []})
+
+c.commit()
+c.close()
 
 # Una chat d'esempio
 t = time.time() - 3 * 3600

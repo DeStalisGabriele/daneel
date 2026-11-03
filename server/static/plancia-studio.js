@@ -52,7 +52,7 @@
   .st-assi .st-ora{left:0;border-left:2px solid var(--red)} .st-assi .st-ora span{color:var(--red);font-weight:700;left:4px}
   .st-corsia{all:unset;box-sizing:border-box;display:block;width:100%;cursor:pointer;padding:8px 0 10px;position:relative}
   .st-corsia:active{opacity:.7}
-  .st-et{display:flex;gap:8px;align-items:baseline;margin-bottom:5px;min-width:0}
+  .st-et{display:flex;gap:8px;align-items:baseline;margin-bottom:5px;min-width:0;position:relative;z-index:1;background:var(--surface);padding:2px 0 2px 6px;margin-left:-6px}
   .st-et small{margin-left:auto;flex:none;font-size:var(--t-cap);color:var(--muted);font-variant-numeric:tabular-nums}
   .st-et b{font-size:var(--t-sub);flex:none}
   .st-et span{font-size:var(--t-cap);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
