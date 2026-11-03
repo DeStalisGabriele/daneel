@@ -239,8 +239,8 @@ footer{font-size:var(--t-foot);color:var(--muted);padding-inline:4px;line-height
 @media (hover:hover){.tile.tap:hover,.lift.tap:hover{background:color-mix(in srgb,var(--surface) 94%,var(--ink))}}
 .sheet-back{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.4);display:grid;place-items:center;padding:16px;animation:fade .18s ease-out}
 @keyframes fade{from{opacity:0}}
-.sheet{background:var(--surface);border-radius:20px;width:min(720px,100%);max-height:calc(100dvh - 32px);overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-x pan-y;padding:18px 18px 20px;display:grid;gap:14px;align-content:start;box-shadow:0 16px 48px var(--shadow);animation:sheet .22s cubic-bezier(.2,.8,.2,1)}
-@media (max-width:600px){.sheet-back{place-items:end stretch;padding:0}.sheet{border-radius:20px 20px 0 0;max-height:90dvh;padding-bottom:calc(20px + env(safe-area-inset-bottom,0px))}}
+.sheet{box-sizing:border-box;grid-template-columns:minmax(0,1fr);background:var(--surface);border-radius:20px;width:min(720px,100%);max-height:calc(100dvh - 32px);overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-x pan-y;padding:18px 18px 20px;display:grid;gap:14px;align-content:start;box-shadow:0 16px 48px var(--shadow);animation:sheet .22s cubic-bezier(.2,.8,.2,1)}
+@media (max-width:600px){.sheet-back{place-items:end stretch;padding:0}.sheet{border-radius:20px 20px 0 0;max-height:90dvh;padding-bottom:calc(20px + var(--basso,env(safe-area-inset-bottom,0px)))}}
 .sheet-head{display:grid;grid-template-columns:minmax(0,1fr) 30px;gap:12px;align-items:start}
 .sheet-head h2{color:var(--accent)}
 .sheet .x{width:30px;height:30px;border-radius:50%;border:0;background:var(--fill);color:var(--muted);cursor:pointer;display:grid;place-items:center}
@@ -1578,6 +1578,8 @@ renderAll();
   document.addEventListener("keydown", e=>{ if(e.key==="Escape" && !panel.hidden){ set(false); fab.focus(); } });
   document.addEventListener("click", e=>{ if(!panel.hidden && !panel.contains(e.target) && !fab.contains(e.target)) set(false); });
 })();
+// the app tells how much of the bottom its floating tab bar covers, so sheets keep their last lines above it
+addEventListener("message", e=>{ if(e.origin===location.origin && e.data && e.data.tipo==="spazio") document.documentElement.style.setProperty("--basso", Math.max(0, Math.round(e.data.basso||0))+"px"); });
 // the Plancia is one iframe for every tab: switching tab only changes the #, so open sheets and panels are closed by hand
 addEventListener("hashchange", ()=>{ if(!document.getElementById("detailBack").hidden) closeDetail(); if(!document.getElementById("spBack").hidden) closeSpese(); const p=document.getElementById("botPanel"); if(!p.hidden){ p.hidden=true; document.getElementById("botFab").setAttribute("aria-expanded","false"); } });
 // compact navigation bar once the large title has scrolled away, as in iOS

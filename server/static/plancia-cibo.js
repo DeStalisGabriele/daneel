@@ -32,7 +32,7 @@
   .cb-voce button{border:0;background:none;color:var(--muted);font-size:15px;cursor:pointer;min-height:30px}
   .cb-vuoto{font-size:var(--t-foot);color:var(--muted)}
   .cb-velo{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.45);display:grid;align-items:end}
-  .cb-foglio{background:var(--surface);border-radius:20px 20px 0 0;padding:18px 18px calc(18px + env(safe-area-inset-bottom,0px));display:grid;gap:14px;max-height:88dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y}
+  .cb-foglio{box-sizing:border-box;background:var(--surface);border-radius:20px 20px 0 0;padding:18px 18px calc(18px + var(--basso,env(safe-area-inset-bottom,0px)));display:grid;gap:14px;max-height:88dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y}
   .cb-foglio h3{margin:0;font-size:var(--t-title3)}
   .cb-foglio .x{justify-self:end;border:0;background:var(--fill);border-radius:50%;width:30px;height:30px;color:var(--muted);cursor:pointer}
   .cb-testa{display:grid;grid-template-columns:minmax(0,1fr) 30px;gap:10px;align-items:start}

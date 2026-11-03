@@ -71,7 +71,7 @@
   .pc-consegnati .pc-pacco{opacity:.72}
   .pc-vuoto{font-size:var(--t-foot);color:var(--muted);text-align:center;padding:18px 8px}
   .pc-velo{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.45);display:grid;align-items:end}
-  .pc-foglio{background:var(--bg);border-radius:20px 20px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom,0px));display:grid;gap:14px;max-height:90dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y}
+  .pc-foglio{box-sizing:border-box;background:var(--bg);border-radius:20px 20px 0 0;padding:18px 16px calc(18px + var(--basso,env(safe-area-inset-bottom,0px)));display:grid;gap:14px;max-height:90dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y}
   .pc-testa{display:grid;grid-template-columns:minmax(0,1fr) 30px;gap:10px;align-items:start}
   .pc-testa h3{margin:0;font-size:var(--t-title3);overflow-wrap:anywhere}
   .pc-testa small{display:block;color:var(--muted);font-size:var(--t-foot);margin-top:2px;overflow-wrap:anywhere}

@@ -765,10 +765,17 @@ function scheda(id) {
     // ?v=: un indirizzo nuovo scavalca le copie vecchie che Safari teneva in cache prima del no-cache (2026-11-02)
     if (!pagina.src) pagina.src = "plancia.html?v=2#" + id;
     else if (pagina.contentWindow) pagina.contentWindow.location.hash = id;
+    spazioBarra();
     testo.blur();
   } else requestAnimationFrame(giu);
   try { localStorage.setItem("daneel-scheda", id); } catch (e) {}
 }
+// La pillola delle schede galleggia sopra la Plancia: le si dice quanto copre in basso, così i fogli non ci finiscono sotto.
+function spazioBarra() {
+  const p = document.querySelector("#schede .pillola"); if (!p || !pagina.contentWindow) return;
+  try { pagina.contentWindow.postMessage({tipo: "spazio", basso: innerHeight - p.getBoundingClientRect().top}, location.origin); } catch (e) {}
+}
+pagina.addEventListener("load", spazioBarra); addEventListener("resize", spazioBarra);
 document.querySelectorAll("#schede button").forEach(b => b.onclick = () => scheda(b.dataset.scheda));
 // La Plancia chiede di scrivere a Daneel (scheda Cibo, "Descrivi a Daneel"): si va in chat con il testo pronto.
 addEventListener("message", e => {
