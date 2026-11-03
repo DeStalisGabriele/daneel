@@ -44,22 +44,22 @@
   .st-consiglio{font-size:var(--t-sub);line-height:1.35;margin:0}
   .st-nota{font-size:var(--t-foot);color:var(--muted);margin:0;line-height:1.35}
   /* corsie */
-  .st-tl{position:relative;padding:22px 0 4px}
-  .st-assi{position:absolute;left:0;right:34px;top:0;bottom:0;pointer-events:none}
+  .st-tl{position:relative;padding:22px 0 4px;overflow:hidden}
+  .st-assi{position:absolute;left:0;right:12px;top:0;bottom:0;pointer-events:none}
   .st-assi i{position:absolute;top:14px;bottom:0;border-left:1px solid var(--sep)}
   .st-assi i span{position:absolute;top:-14px;left:3px;font-size:var(--t-cap2);color:var(--muted);font-style:normal;white-space:nowrap}
   .st-assi .st-sess{border-left:1.5px dashed var(--indigo)} .st-assi .st-sess span{color:var(--indigo);font-weight:600}
   .st-assi .st-ora{left:0;border-left:2px solid var(--red)} .st-assi .st-ora span{color:var(--red);font-weight:700;left:4px}
   .st-corsia{all:unset;box-sizing:border-box;display:block;width:100%;cursor:pointer;padding:8px 0 10px;position:relative}
   .st-corsia:active{opacity:.7}
-  .st-et{display:flex;gap:8px;align-items:baseline;margin-bottom:5px;padding-right:34px;min-width:0}
+  .st-et{display:flex;gap:8px;align-items:baseline;margin-bottom:5px;min-width:0}
+  .st-et small{margin-left:auto;flex:none;font-size:var(--t-cap);color:var(--muted);font-variant-numeric:tabular-nums}
   .st-et b{font-size:var(--t-sub);flex:none}
   .st-et span{font-size:var(--t-cap);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-  .st-pista{position:relative;height:14px;margin-right:34px;border-radius:7px;background:color-mix(in srgb,var(--ink) 5%,transparent)}
+  .st-pista{position:relative;height:14px;margin-right:12px;border-radius:7px;background:color-mix(in srgb,var(--ink) 5%,transparent)}
   .st-barra{position:absolute;top:0;bottom:0;border-radius:7px;opacity:.9}
   .st-pp{position:absolute;top:6px;height:2px;background:repeating-linear-gradient(90deg,var(--muted) 0 4px,transparent 4px 8px);opacity:.7}
-  .st-flag{position:absolute;top:-4px;font-style:normal;font-size:15px;line-height:1}
-  .st-flag small{position:absolute;left:18px;top:3px;font-size:var(--t-cap2);color:var(--muted);white-space:nowrap}
+  .st-flag{position:absolute;top:-2px;font-style:normal;font-size:14px;line-height:1;transform:translateX(-50%)}
   .st-leg{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:var(--t-cap);color:var(--muted);padding:6px 0 12px}
   .st-leg i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
   .st-leg i.tr{height:2px;vertical-align:3px;background:repeating-linear-gradient(90deg,var(--muted) 0 3px,transparent 3px 6px)}
@@ -133,8 +133,8 @@
         return `<i class="st-barra" style="left:${a}%;width:${b - a}%;background:${COLORI[k]}"></i>`;
       }).join("");
       return `<button class="st-corsia" type="button" data-id="${esc(e.id)}" aria-label="${esc(e.nome)}: ${esc(s.testo)}">
-        <div class="st-et"><b>${esc(e.breve)}</b><span style="color:${s.colore}">${esc(s.testo)}</span></div>
-        <div class="st-pista">${pp}${barre}<i class="st-flag" style="left:${x(e.data)}%">🏁<small>${gg(e.data)}</small></i></div></button>`;
+        <div class="st-et"><b>${esc(e.breve)}</b><span style="color:${s.colore}">${esc(s.testo)}</span><small>${gg(e.data)}</small></div>
+        <div class="st-pista">${pp}${barre}<i class="st-flag" style="left:${x(e.data)}%">🏁</i></div></button>`;
     }).join("");
     const leg = Object.entries(COLORI).map(([k, c]) => `<span><i style="background:${c}"></i>${FASE[k]}</span>`).join("")
       + (piano.oggi < piano.inizio_sessione ? '<span><i class="tr"></i>Prima passata</span>' : "");
