@@ -42,7 +42,41 @@
   .st-riga{display:flex;justify-content:space-between;gap:10px;font-size:var(--t-sub)}
   .st-riga span:last-child{font-variant-numeric:tabular-nums;color:var(--muted);text-align:right}
   .st-consiglio{font-size:var(--t-sub);line-height:1.35;margin:0}
-  .st-nota{font-size:var(--t-foot);color:var(--muted);margin:0;line-height:1.35}`;
+  .st-nota{font-size:var(--t-foot);color:var(--muted);margin:0;line-height:1.35}
+  /* corsie */
+  .st-tl{position:relative;padding:22px 0 4px}
+  .st-assi{position:absolute;left:0;right:34px;top:0;bottom:0;pointer-events:none}
+  .st-assi i{position:absolute;top:14px;bottom:0;border-left:1px solid var(--sep)}
+  .st-assi i span{position:absolute;top:-14px;left:3px;font-size:var(--t-cap2);color:var(--muted);font-style:normal;white-space:nowrap}
+  .st-assi .st-sess{border-left:1.5px dashed var(--indigo)} .st-assi .st-sess span{color:var(--indigo);font-weight:600}
+  .st-assi .st-ora{left:0;border-left:2px solid var(--red)} .st-assi .st-ora span{color:var(--red);font-weight:700;left:4px}
+  .st-corsia{all:unset;box-sizing:border-box;display:block;width:100%;cursor:pointer;padding:8px 0 10px;position:relative}
+  .st-corsia:active{opacity:.7}
+  .st-et{display:flex;gap:8px;align-items:baseline;margin-bottom:5px;padding-right:34px;min-width:0}
+  .st-et b{font-size:var(--t-sub);flex:none}
+  .st-et span{font-size:var(--t-cap);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .st-pista{position:relative;height:14px;margin-right:34px;border-radius:7px;background:color-mix(in srgb,var(--ink) 5%,transparent)}
+  .st-barra{position:absolute;top:0;bottom:0;border-radius:7px;opacity:.9}
+  .st-pp{position:absolute;top:6px;height:2px;background:repeating-linear-gradient(90deg,var(--muted) 0 4px,transparent 4px 8px);opacity:.7}
+  .st-flag{position:absolute;top:-4px;font-style:normal;font-size:15px;line-height:1}
+  .st-flag small{position:absolute;left:18px;top:3px;font-size:var(--t-cap2);color:var(--muted);white-space:nowrap}
+  .st-leg{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:var(--t-cap);color:var(--muted);padding:6px 0 12px}
+  .st-leg i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+  .st-leg i.tr{height:2px;vertical-align:3px;background:repeating-linear-gradient(90deg,var(--muted) 0 3px,transparent 3px 6px)}
+  /* timeline verticale del dettaglio */
+  .st-vt{display:grid}
+  .st-passo{display:grid;grid-template-columns:22px minmax(0,1fr) auto;gap:10px;position:relative;padding-bottom:16px}
+  .st-passo:last-child{padding-bottom:0}
+  .st-passo:not(:last-child)::before{content:"";position:absolute;left:10px;top:18px;bottom:0;width:2px;background:var(--sep)}
+  .st-passo.fatta:not(:last-child)::before{background:var(--c)}
+  .st-nodo{width:14px;height:14px;margin:2px 0 0 3px;border-radius:50%;border:2px solid var(--c);background:var(--surface);box-sizing:border-box}
+  .st-passo.fatta .st-nodo{background:var(--c)}
+  .st-passo.ora .st-nodo{background:var(--c);box-shadow:0 0 0 4px color-mix(in srgb,var(--c) 25%,transparent)}
+  .st-passo.fine .st-nodo{border-radius:3px}
+  .st-passo b{font-size:var(--t-sub)}
+  .st-passo em{font-style:normal;font-size:var(--t-cap);font-weight:700;color:var(--c);margin-left:6px}
+  .st-passo div span{display:block;font-size:var(--t-foot);color:var(--muted);margin-top:1px}
+  .st-passo .h{font-variant-numeric:tabular-nums;font-weight:600;font-size:var(--t-sub)}`;
   document.head.appendChild(stile);
 
   let token = ""; try { token = localStorage.getItem("daneel-token") || ""; } catch (e) {}
@@ -55,7 +89,7 @@
 
   function stato(e, oggi) {
     if (e.mancano > 0) return {colore: "var(--red)", testo: "Non ci sta: mancano " + ore(e.mancano) + ", anticipa"};
-    if (e.anticipa) return {colore: "var(--orange)", testo: "Anticipa: inizia il " + gg(e.inizio) + " · " + ore(e.ore.sessione) + " in sessione"};
+    if (e.anticipa) return {colore: "var(--orange)", testo: (e.ore.avanzamento < 1 ? "Per ora: " : "") + "anticipa al " + gg(e.inizio) + " · " + ore(e.ore.sessione) + " in sessione"};
     if (e.fase_oggi) return {colore: "var(--green)", testo: "Oggi: " + FASE[e.fase_oggi].toLowerCase() + " · " + ore(e.ore.sessione) + " in sessione"};
     if (oggi < piano.inizio_sessione) return {colore: "var(--green)", testo: "Il " + gg(piano.inizio_sessione) + " basta · teoria vista entro allora: ~" + ore(e.prima_passata.ore_settimana) + "/sett."};
     return {colore: "var(--blue)", testo: "Inizia il " + gg(e.inizio) + " · " + ore(e.ore.sessione) + " in sessione"};
@@ -69,14 +103,42 @@
       : piano.oggi < piano.inizio_sessione
         ? `<div class="st-oggi"><b>Fino al ${gg(piano.inizio_sessione)}: prima passata della teoria</b><span>Lezioni e TEORIA in pari, così il ${gg(piano.inizio_sessione)} hai visto tutto: ~${ore(piano.esami.reduce((s, e) => s + e.prima_passata.ore_settimana, 0))} a settimana per i tre corsi. In sessione restano ~${ore(piano.margine_ore)} di margine.</span></div>`
         : `<div class="st-oggi"><b>Oggi niente studio d'esame in programma</b><span>Margine in sessione: ~${ore(piano.margine_ore)}.</span></div>`;
-    card.innerHTML = oggi + piano.esami.map((e) => {
+    const av = Math.min(...piano.esami.map((e) => e.ore.avanzamento));
+    const provv = av < 1 ? `<div class="st-oggi"><span>📈 Stima provvisoria: il corso è al ${Math.round(av * 100)}% e mancano ancora lezioni e file. Il piano si ricalcola da solo quando il TEORIA cresce o aggiungi esercizi e temi d'esame.</span></div>` : "";
+    card.innerHTML = oggi + corsie() + provv;
+    card.querySelectorAll(".st-corsia").forEach((b) => b.onclick = () => apri(b.dataset.id));
+  }
+
+  // Corsie (una per esame) da oggi all'ultimo esame: le fasi sono barre colorate, la prima passata è tratteggiata,
+  // le linee verticali segnano i mesi e l'inizio della sessione, la bandierina è l'esame.
+  const COLORI = {teoria: "var(--blue)", esercizi: "var(--orange)", simulazioni: "var(--purple)", ripasso: "var(--green)"};
+  const giorno = (iso) => Math.round(new Date(iso + "T12:00") / 864e5);
+  function corsie() {
+    const t0 = giorno(piano.oggi), t1 = Math.max(...piano.esami.map((e) => giorno(e.data))) + 1;
+    const x = (iso) => Math.max(0, Math.min(100, (giorno(iso) - t0) / (t1 - t0) * 100));
+    const righe = [];
+    const d = new Date(piano.oggi + "T12:00"); d.setDate(1);
+    for (d.setMonth(d.getMonth() + 1); giorno(d.toISOString().slice(0, 10)) < t1; d.setMonth(d.getMonth() + 1)) {
+      const iso = d.toISOString().slice(0, 10);
+      righe.push(`<i class="st-mese" style="left:${x(iso)}%"><span>${MESI[d.getMonth()]}</span></i>`);
+    }
+    if (piano.inizio_sessione > piano.oggi)
+      righe.push(`<i class="st-sess" style="left:${x(piano.inizio_sessione)}%"><span>${gg(piano.inizio_sessione)}</span></i>`);
+    const lane = piano.esami.map((e) => {
       const s = stato(e, piano.oggi);
-      return `<button class="st-esame" type="button" data-id="${esc(e.id)}">
-        <i class="st-pallino" style="background:${s.colore}"></i>
-        <div><div class="st-nome">${esc(e.nome)}</div><div class="st-sotto">${esc(s.testo)}</div></div>
-        <div class="st-giorni">${e.giorni_mancanti}<small>giorni · ${gg(e.data)}</small></div></button>`;
+      const pp = piano.oggi < piano.inizio_sessione
+        ? `<i class="st-pp" style="left:0;width:${x(e.inizio && e.inizio < piano.inizio_sessione ? e.inizio : piano.inizio_sessione)}%"></i>` : "";
+      const barre = Object.entries(e.fasi).filter(([, f]) => f.da).map(([k, f]) => {
+        const a = x(f.da), b = Math.max(a + 1.2, x(new Date(giorno(f.a) * 864e5 + 864e5).toISOString().slice(0, 10)));
+        return `<i class="st-barra" style="left:${a}%;width:${b - a}%;background:${COLORI[k]}"></i>`;
+      }).join("");
+      return `<button class="st-corsia" type="button" data-id="${esc(e.id)}" aria-label="${esc(e.nome)}: ${esc(s.testo)}">
+        <div class="st-et"><b>${esc(e.breve)}</b><span style="color:${s.colore}">${esc(s.testo)}</span></div>
+        <div class="st-pista">${pp}${barre}<i class="st-flag" style="left:${x(e.data)}%">🏁<small>${gg(e.data)}</small></i></div></button>`;
     }).join("");
-    card.querySelectorAll(".st-esame").forEach((b) => b.onclick = () => apri(b.dataset.id));
+    const leg = Object.entries(COLORI).map(([k, c]) => `<span><i style="background:${c}"></i>${FASE[k]}</span>`).join("")
+      + (piano.oggi < piano.inizio_sessione ? '<span><i class="tr"></i>Prima passata</span>' : "");
+    return `<div class="st-tl"><div class="st-assi">${righe.join("")}<i class="st-ora"><span>oggi</span></i></div>${lane}</div><div class="st-leg">${leg}</div>`;
   }
 
   function chiudi() { document.querySelectorAll(".st-velo").forEach((v) => v.remove()); }
@@ -86,17 +148,25 @@
     const e = piano.esami.find((x) => x.id === id); if (!e) return;
     chiudi();
     const m = e.materiale, o = e.ore, ip = piano.ipotesi;
-    const fasi = Object.entries(e.fasi).map(([k, f]) => `<div class="st-fase${e.fase_oggi === k ? " ora" : ""}">
-      <b>${esc(f.nome)}</b><span class="h">${ore(f.ore)}</span>
-      <span>${f.da ? gg(f.da) + (f.a !== f.da ? " → " + gg(f.a) : "") : "nessun giorno libero"}${f.mancano > 0 ? " · mancano " + ore(f.mancano) : ""}</span></div>`).join("");
+    // timeline verticale: prima passata, le quattro fasi, l'esame; ● fatta, ◉ in corso, ○ da fare
+    const passo = (titolo, quando, h, colore, st) => `<div class="st-passo ${st}" style="--c:${colore}">
+      <i class="st-nodo"></i><div><b>${titolo}</b>${st === "ora" ? '<em>ora</em>' : ""}<span>${quando}</span></div><span class="h">${h}</span></div>`;
+    const statoFase = (f, k) => e.fase_oggi === k ? "ora" : f.a && f.a < piano.oggi ? "fatta" : "";
+    const fasi = passo("Prima passata della teoria", "durante il semestre, entro il " + gg(e.prima_passata.entro) + " · ~" + ore(e.prima_passata.ore_settimana) + " a settimana",
+        ore(e.prima_passata.ore), "var(--muted)", piano.oggi < piano.inizio_sessione ? "ora" : "fatta")
+      + Object.entries(e.fasi).map(([k, f]) => passo(esc(f.nome),
+        (f.da ? gg(f.da) + (f.a !== f.da ? " → " + gg(f.a) : "") : "nessun giorno libero") + (f.mancano > 0 ? " · mancano " + ore(f.mancano) : ""),
+        ore(f.ore), COLORI[k], statoFase(f, k))).join("")
+      + passo("🏁 Esame", gg(e.data) + " · riserva " + gg(e.riserva), "", "var(--red)", "fine");
     const v = document.createElement("div");
     v.className = "st-velo";
     v.innerHTML = `<div class="st-foglio" role="dialog" aria-label="${esc(e.nome)}">
       <div class="st-testa"><div><h3>${esc(e.nome)}</h3><small>Appello del ${gg(e.data)} · tra ${e.giorni_mancanti} giorni · riserva ${gg(e.riserva)}</small></div>
         <button class="x" type="button" aria-label="Chiudi">✕</button></div>
       <div class="st-box"><h4>Piano</h4>
-        <div class="st-fase"><b>Prima passata della teoria</b><span class="h">${ore(e.prima_passata.ore)}</span><span>durante il semestre, entro il ${gg(e.prima_passata.entro)} · ~${ore(e.prima_passata.ore_settimana)} a settimana</span></div>
-        ${e.inizio ? `<p class="st-consiglio"><b>${e.anticipa ? "Anticipa: inizia il " : "In sessione dal "}${gg(e.inizio)}</b>: ${ore(e.ore.sessione)} in sessione, ${ore(e.ore.totale)} in tutto (i CFU ne prevedono ~${e.ore.cfu_ore}).</p>` : ""}${fasi}</div>
+        ${e.inizio ? `<p class="st-consiglio"><b>${e.anticipa ? "Anticipa: inizia il " : "In sessione dal "}${gg(e.inizio)}</b>: ${ore(e.ore.sessione)} in sessione, ${ore(e.ore.totale)} in tutto (i CFU ne prevedono ~${e.ore.cfu_ore}).</p>` : ""}
+        <div class="st-vt">${fasi}</div></div>
+      ${e.ore.stime.length || e.andamento.ore ? `<div class="st-box"><h4>Stima provvisoria</h4>${e.ore.stime.map((s) => `<p class="st-nota">• ${esc(s)}</p>`).join("")}${e.andamento.ore ? `<p class="st-nota">• Dal ${gg(e.andamento.dal)}: ${e.andamento.ore > 0 ? "+" : ""}${ore(e.andamento.ore)} in sessione${e.andamento.inizio && e.andamento.inizio !== e.inizio ? " (inizio era il " + gg(e.andamento.inizio) + ")" : ""}.</p>` : ""}</div>` : ""}
       <div class="st-box"><h4>Suggerimenti</h4>${e.consigli.map((c) => `<p class="st-consiglio">${esc(c)}</p>`).join("")}</div>
       <div class="st-box"><h4>Materiale misurato</h4>
         <div class="st-riga"><span>TEORIA.docx oggi</span><span>${m.parole.toLocaleString("it-IT")} parole · ${m.immagini} immagini</span></div>

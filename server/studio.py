@@ -59,6 +59,7 @@ PREDEFINITE = {
     "parole_minuto": 140,              # lettura per imparare (Carver)
     "minuti_immagine": 1.5,
     "minuti_pagina_esercizi": 12,      # una pagina di esercizi svolta e corretta
+    "quota_esercizi": 0.2,             # esercizi attesi: 20% delle ore di studio dei CFU, finché i file non ci sono
     "simulazioni_min": 3, "simulazioni_max": 6,
     "ripasso_giorni": 7, "ripasso_ore_giorno": 2,
     "ore_studio_cfu": 15,
@@ -146,23 +147,34 @@ def _r(x: float) -> float:
 def _ore(e: dict, m: dict, imp: dict, oggi: date) -> dict:
     d0, d1 = date.fromisoformat(imp["inizio_lezioni"]), date.fromisoformat(imp["fine_lezioni"])
     fatto = max(1, (min(oggi, d1) - d0).days)
-    proiezione = min(3.0, max(1.0, (d1 - d0).days / fatto))       # quanto crescerà ancora il TEORIA
+    avanzamento = min(1.0, fatto / max(1, (d1 - d0).days))          # quanto del corso è passato (0-1)
+    proiezione = min(3.0, max(1.0, 1 / avanzamento))                 # quanto crescerà ancora il TEORIA
     parole = m["parole"] * proiezione
     passata = parole / imp["parole_minuto"] / 60 + m["immagini"] * proiezione * imp["minuti_immagine"] / 60
     if not m["parole"]:
-        passata = m["slide_pagine"] * 4 / 60                             # niente TEORIA: 4 minuti a slide
-    esercizi = m["esercizi_pagine"] * imp["minuti_pagina_esercizi"] / 60   # i PDF di esercizi ci sono già: niente proiezione
-    if e.get("tipo") in ("scritto", "pc"):
-        esercizi = max(esercizi, 8.0)
+        passata = m["slide_pagine"] * proiezione * 4 / 60                # niente TEORIA: 4 minuti a slide
+    cfu = e.get("cfu", 8) * imp["ore_studio_cfu"]
+    # Esercizi: i file si raccolgono durante il corso (Gabriele non li ha ancora cercati tutti), quindi finché il corso
+    # non è finito la stima misurata si mescola con una attesa dai CFU, che pesa sempre meno; mai sotto il misurato.
+    misurati = m["esercizi_pagine"] * imp["minuti_pagina_esercizi"] / 60
+    attesi = cfu * imp["quota_esercizi"]
+    esercizi = max(misurati, (1 - avanzamento) * attesi + avanzamento * misurati)
     n_sim = max(imp["simulazioni_min"], min(imp["simulazioni_max"], m["appelli"]))
     simulazioni = n_sim * e.get("durata_ore", 2) * 1.5                   # la prova a tempo + la correzione
     ripasso = imp["ripasso_giorni"] * imp["ripasso_ore_giorno"]
     sessione = passata + esercizi + simulazioni + ripasso
-    cfu = e.get("cfu", 8) * imp["ore_studio_cfu"]
+    stime = []
+    if avanzamento < 1:
+        stime.append(f"TEORIA proiettato a fine corso (×{proiezione:.1f}): oggi è al {avanzamento:.0%} delle lezioni")
+    if misurati < esercizi:
+        stime.append(f"esercizi: trovati {misurati:.0f} h, ne conto {esercizi:.0f} finché non aggiungi altri file")
+    if m["appelli"] < imp["simulazioni_min"]:
+        stime.append(f"temi d'esame: trovati {m['appelli']}, ne conto {imp['simulazioni_min']}")
     return {"prima_passata": _r(passata), "teoria": _r(passata), "esercizi": _r(esercizi),
             "simulazioni": _r(simulazioni), "ripasso": _r(ripasso), "sessione": _r(sessione),
             "totale": _r(passata + sessione), "cfu_ore": cfu, "n_simulazioni": n_sim,
-            "proiezione": round(proiezione, 2), "parole_previste": int(parole)}
+            "proiezione": round(proiezione, 2), "parole_previste": int(parole),
+            "avanzamento": round(avanzamento, 2), "stime": stime}
 
 
 def _capacita(oggi: date, fine: date, imp: dict) -> dict[date, float]:
@@ -249,10 +261,21 @@ def _piano() -> dict:
                          for s in e.get("scadenze", [])]
     # margine: ore ancora libere in sessione dopo aver messo tutti gli esami
     margine = sum(h for g, h in libero.items() if inizio_s <= g < ultima and h > 0)
+    # storico: le ore stimate di ogni giorno, per vedere come cambia il piano mentre il materiale cresce
+    storico, _ = plancia._leggi(COL, "storico")
+    storico = storico or {}
+    storico[oggi.isoformat()] = {e["id"]: {"sessione": e["ore"]["sessione"], "inizio": e["inizio"]} for e in esami}
+    storico = {k: storico[k] for k in sorted(storico)[-90:]}
+    plancia._scrivi(COL, "storico", storico)
+    prima = [k for k in sorted(storico) if k <= (oggi - timedelta(days=7)).isoformat()]
+    rif = storico[prima[-1]] if prima else storico[min(storico)]
     for e in esami:
         e["consigli"] = _consigli(e, oggi, esami, imp)
         e["fase_oggi"] = next((k for k, f in e["fasi"].items()
                                if f["da"] and f["da"] <= oggi.isoformat() <= f["a"]), None)
+        r = rif.get(e["id"])
+        e["andamento"] = {"dal": prima[-1] if prima else min(storico),
+                          "ore": _r(e["ore"]["sessione"] - r["sessione"]) if r else 0, "inizio": r["inizio"] if r else None}
     return {"oggi": oggi.isoformat(), "inizio_sessione": inizio_s.isoformat(), "esami": esami, "giorni": giorni,
             "oggi_piano": giorni.get(oggi.isoformat(), []), "margine_ore": _r(margine),
             "ipotesi": {k: imp[k] for k in ("parole_minuto", "minuti_immagine", "minuti_pagina_esercizi",
