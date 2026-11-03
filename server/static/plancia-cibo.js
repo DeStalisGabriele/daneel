@@ -182,9 +182,34 @@
   function apriEan(ean, v) {
     if (v) v.querySelector(".cb-errore").textContent = "Cerco " + ean + "…";
     api("api/cibo/prodotto/" + ean).then(mostraProdotto).catch((err) => {
+      if (/non trovato/i.test(String(err))) return nuovoAlimento(ean);
       const w = v || foglio(`<div class="cb-testa"><h3>Codice ${esc(ean)}</h3><button class="x" type="button" aria-label="Chiudi">✕</button></div><div class="cb-errore"></div>`);
       w.querySelector(".cb-errore").textContent = err + ". Puoi cercarlo per nome o descriverlo a Daneel.";
     });
+  }
+
+  // Codice che non c'è da nessuna parte: lo si aggiunge al database dei propri alimenti (api/cibo/nuovo), scrivendo i
+  // valori dell'etichetta per 100 g, oppure chiedendo a Daneel di leggerli dalla foto (skill "alimento").
+  function nuovoAlimento(ean) {
+    const campo = (id, nome, ph, modo = "decimal") => `<label>${nome}<input id="${id}" type="text" inputmode="${modo}" placeholder="${ph}" autocomplete="off"></label>`;
+    const v = foglio(`<div class="cb-testa"><div><h3>Nuovo alimento</h3><div class="cb-vuoto">Il codice ${esc(ean)} non è nel database: aggiungilo con i valori dell'etichetta.</div></div><button class="x" type="button" aria-label="Chiudi">✕</button></div>
+      <div class="cb-campi">${campo("naNome", "Nome", "Es. Yogurt greco 0%", "text")}${campo("naMarca", "Marca", "facoltativa", "text")}</div>
+      <div class="cb-vuoto">Valori per 100 g</div>
+      <div class="cb-campi">${campo("naKcal", "Kcal", "0")}${campo("naProt", "Proteine (g)", "0")}${campo("naCarb", "Carboidrati (g)", "0")}${campo("naGrassi", "Grassi (g)", "0")}${campo("naPorz", "Porzione (g)", "facoltativa")}</div>
+      <button class="cb-ok" type="button" id="naSalva">Salva e aggiungi al pasto</button>
+      <button class="cb-ok" type="button" id="naDaneel" style="background:var(--fill);color:var(--ink)">📷 Manda la foto dell'etichetta a Daneel</button>
+      <div class="cb-errore" id="naErr"></div>`);
+    const val = (id) => v.querySelector("#" + id).value.trim().replace(",", ".");
+    v.querySelector("#naSalva").onclick = (e) => {
+      e.target.disabled = true;
+      api("api/cibo/nuovo", {method: "POST", body: JSON.stringify({ean, nome: val("naNome"), marca: val("naMarca"), porzioneG: val("naPorz") || null,
+        per100: {kcal: val("naKcal"), proteine: val("naProt") || 0, carboidrati: val("naCarb") || 0, grassi: val("naGrassi") || 0}})})
+        .then(mostraProdotto).catch((err) => { v.querySelector("#naErr").textContent = err; e.target.disabled = false; });
+    };
+    v.querySelector("#naDaneel").onclick = () => {
+      chiudi();
+      try { window.parent.postMessage({tipo: "scrivi", testo: "/alimento " + ean + " "}, location.origin); } catch (e) {}
+    };
   }
 
   document.getElementById("cbCerca").onclick = () => {

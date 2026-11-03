@@ -4,6 +4,7 @@ giorni/<data>.cibo.<pasto> = {kcal, proteine, carboidrati, grassi, voci: [{nome,
 e la spunta giorni/<data>.h.<pasto> = true. Niente modelli: solo conti."""
 
 import asyncio
+import re
 import json
 import os
 import time
@@ -69,11 +70,51 @@ def _cache() -> dict:
 CAMPI = "code,product_name,product_name_it,brands,nutriments,serving_size,serving_quantity,image_front_small_url"
 
 
+# I prodotti aggiunti da Gabriele (o da Daneel con la foto dell'etichetta) quando un codice non è su Open Food Facts:
+# collezione "alimenti" della Plancia, un documento per codice a barre (o "m-<nome>" senza codice), nello stesso formato
+# di _prodotto più "fonte": "mio". Si cercano per primi, così vincono anche su Open Food Facts.
+MIEI = "alimenti"
+
+
+def _miei() -> list[dict]:
+    with plancia._conn() as c:
+        return [json.loads(r[0]) for r in c.execute("SELECT data FROM docs WHERE col = ?", (MIEI,))]
+
+
+@router.post("/nuovo")
+async def nuovo(dati: dict, authorization: str | None = Header(None)):
+    """{ean?, nome, marca?, porzioneG?, per100: {kcal, proteine, carboidrati, grassi}}: salva un prodotto nel database."""
+    _controlla(authorization)
+    nome = str(dati.get("nome") or "").strip()[:80]
+    ean = re.sub(r"\D", "", str(dati.get("ean") or ""))
+    if not nome:
+        raise HTTPException(400, "Serve il nome del prodotto")
+    if ean and not 6 <= len(ean) <= 14:
+        raise HTTPException(400, "Codice a barre non valido")
+    p100 = dati.get("per100") or {}
+    per100 = {k: _num(str(p100.get(k)).replace(",", ".") if p100.get(k) is not None else None) for k in MACRO}
+    if per100["kcal"] is None or not 0 <= per100["kcal"] <= 900:
+        raise HTTPException(400, "Servono le kcal per 100 g (tra 0 e 900)")
+    per100 = {k: v or 0 for k, v in per100.items()}
+    if any(not 0 <= per100[k] <= 100 for k in ("proteine", "carboidrati", "grassi")):
+        raise HTTPException(400, "Proteine, carboidrati e grassi vanno per 100 g (tra 0 e 100)")
+    id_ = ean or "m-" + (re.sub(r"[^a-z0-9]+", "-", nome.lower()).strip("-")[:40] or "prodotto")
+    p = {"ean": ean or None, "nome": nome, "marca": str(dati.get("marca") or "").strip()[:60],
+         "porzioneG": _num(dati.get("porzioneG")) or None, "porzione": None, "immagine": None,
+         "per100": per100, "fonte": "mio", "aggiunto": datetime.now(ROMA).date().isoformat()}
+    p["porzione"] = f"{p['porzioneG']:g} g" if p["porzioneG"] else None
+    plancia._scrivi(MIEI, id_, p)
+    return p
+
+
 @router.get("/prodotto/{ean}")
 async def prodotto(ean: str, authorization: str | None = Header(None)):
     _controlla(authorization)
     if not ean.isdigit() or not 6 <= len(ean) <= 14:
         raise HTTPException(400, "codice a barre non valido")
+    mio, _ = plancia._leggi(MIEI, ean)
+    if mio:
+        return mio
     c = _cache()
     if ean in c:
         return c[ean]
@@ -94,6 +135,8 @@ async def cerca(q: str, authorization: str | None = Header(None)):
     _controlla(authorization)
     if len(q.strip()) < 2:
         return {"prodotti": []}
+    parole = q.lower().split()
+    miei = [p for p in _miei() if all(w in (p.get("nome", "") + " " + (p.get("marca") or "")).lower() for w in parole)]
     base = f"{OFF}/cgi/search.pl?search_terms={urllib.parse.quote(q)}&search_simple=1&action=process&json=1&page_size=20&fields={CAMPI}"
     # Prima i prodotti venduti in Italia, i più scansionati in cima; la ricerca di Open Food Facts a volte risponde 503
     # proprio con i filtri, quindi in quel caso si riprova senza.
@@ -105,8 +148,10 @@ async def cerca(q: str, authorization: str | None = Header(None)):
         except Exception:  # noqa: BLE001
             await asyncio.sleep(.5)
     if j is None:
+        if miei:
+            return {"prodotti": miei[:12]}
         raise HTTPException(502, "Open Food Facts non risponde, riprova tra poco")
-    return {"prodotti": [p for p in (_prodotto(x) for x in j.get("products", [])) if p][:12]}
+    return {"prodotti": (miei + [p for p in (_prodotto(x) for x in j.get("products", [])) if p])[:12]}
 
 
 def _oggi() -> str:
