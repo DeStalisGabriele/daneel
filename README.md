@@ -142,6 +142,19 @@ tailscale serve --bg --https 8444 http://127.0.0.1:8791
 
 Then open `https://<server>.<tailnet>.ts.net:8444` in Safari, paste the token, and *Share → Add to Home Screen*. Enable notifications from the bell icon.
 
+### Share files from any app
+
+iOS does not list web apps in the share sheet, so sharing goes through a Shortcut. In the Shortcuts app, create one with *Show in Share Sheet* enabled and these actions:
+
+1. **Ask for Input** (Text): a comment for Daneel.
+2. **Get Contents of URL**: `https://<server>.<tailnet>.ts.net:8444/api/messaggio`, method POST, header `Authorization: Bearer <token>`, request body *Form* with:
+   - `testo` (Text) = *Provided Input*
+   - `file` (File) = *Shortcut Input*
+   - `breve` (Text) = `1`
+3. **Show Notification**: a confirmation.
+
+With `breve=1` the server answers right away instead of streaming the reply; Daneel works on the file in the background and the answer shows up in the chat with a push notification.
+
 Configuration (environment variables):
 
 | Variable | Default | Meaning |
