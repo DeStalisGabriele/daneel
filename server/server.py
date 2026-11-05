@@ -553,7 +553,10 @@ async def stato(agente: str = "daneel", authorization: str | None = Header(None)
 
 @app.post("/api/messaggio")
 async def messaggio(testo: str = Form(""), agente: str = Form("daneel"), foto: list[UploadFile] = File(default=[]),
-                    file: list[UploadFile] = File(default=[]), audio: UploadFile | None = File(default=None), authorization: str | None = Header(None)):
+                    file: list[UploadFile] = File(default=[]), audio: UploadFile | None = File(default=None),
+                    breve: str = Form(""), authorization: str | None = Header(None)):
+    """`breve` (per il Comando rapido "Condividi con Daneel" dell'iPhone): risponde subito con un JSON invece di
+    seguire la risposta in streaming; il turno gira comunque sul server e la risposta arriva in chat con la notifica."""
     global turno
     _controlla(authorization)
     via = _agente(agente)   # il subagente scelto dal menu ("daneel" = automatico)
@@ -627,6 +630,8 @@ async def messaggio(testo: str = Form(""), agente: str = Form("daneel"), foto: l
         _scrivi_storia(agente, storia)
         _accoda({"id": id_, "prompt": prompt, "vocale": str(vocale) if vocale else None, "testo": testo})
         t = _prossimo()
+        if breve and t is not None and t.voce["id"] == id_:
+            return {"inviato": True, "id": id_}
         if t is None or t.voce["id"] != id_:
             c = _leggi_coda()
             return {"in_coda": True, "id": id_, "posizione": len(c["voci"]),
