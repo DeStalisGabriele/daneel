@@ -109,8 +109,8 @@
       fd.append("testo", "[Risposta data dalla scheda Coach dell'app, non serve rispondere in chat con un muro di testo] " +
         "Gabriele ha risposto alla domanda " + (q.id || ("q" + (i + 1))) + " del documento coach/" + id + ": «" + q.testo + "». " +
         "La risposta è già salvata nel documento (campo `risposta`). Leggila, scrivi nel documento un `commento` breve (1-3 frasi) " +
-        "nella stessa domanda, aggiorna `prossima` e `coach/profilo` se serve, chiudi lo `stato` se non restano domande aperte. " +
-        "In chat rispondi con una riga sola.\nRisposta di Gabriele: " + testo);
+        "nella stessa domanda (2-5 frasi: valuta la risposta con le prove e le fonti, dissenti se serve), aggiorna `prossima` e `coach/profilo` se serve, " +
+        "chiudi lo `stato` se non restano domande aperte. In chat rispondi con una riga sola.\nRisposta di Gabriele: " + testo);
       fetch("api/messaggio", {method: "POST", body: fd, headers: {Authorization: "Bearer " + token}}).catch(() => {});
     };
   }

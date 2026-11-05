@@ -113,6 +113,33 @@ storico_libro = [{"d": k(oggi - timedelta(days=x)), "p": max(3, 72 - x * 5)} for
 metti("config", "libro", {"titolo": "Io, robot", "autore": "Isaac Asimov", "percentuale": 72, "pagineTotali": 280, "storico": storico_libro,
                           "daLeggere": ["Abissi d'acciaio", "Il sole nudo", "I robot dell'alba"], "fonte": "demo", "aggiornato": k(oggi), "precedenti": []})
 
+# Coach: un'analisi finta con tre domande (una già con risposta e commento) e una revisione settimanale.
+# Le fonti sono articoli veri, citati come li citerebbe il coach; i numeri dell'allenamento sono inventati.
+ieri = datetime.now() - timedelta(days=1)
+metti("coach", "s-demo01", {
+    "tipo": "allenamento", "data": k(oggi - timedelta(days=1)), "allenamentoId": "demo01", "titolo": "Gambe e schiena",
+    "creato": ieri.replace(microsecond=0).isoformat(), "stato": "aperto",
+    "sintesi": "Squat 90 kg 8-8-7, due serie complete e una a 7. Nessun carico salito rispetto a lunedì.",
+    "punti": [
+        {"testo": "Dato: 12 serie dure per le gambe in questa sessione (3 squat, 3 stacco rumeno, 3 affondi, 3 polpacci).", "fonte": ""},
+        {"testo": "Per l'ipertrofia il riferimento è 10 o più serie dure a settimana per gruppo muscolare: sei nella fascia utile, ma solo con questa seduta.",
+         "fonte": "Schoenfeld et al. 2017, J Sports Sci"},
+        {"testo": "Le serie di affondi sono tutte identiche (3×8 con lo stesso carico): se non sono vicine al cedimento, il margine è lì.",
+         "fonte": "Refalo et al. 2023, Sports Med"},
+    ],
+    "domande": [
+        {"id": "q1", "testo": "Come stavano energia, ginocchia e schiena? E le gambe dopo il Muay Thai di ieri sera?", "risposta": None},
+        {"id": "q2", "testo": "Perché 90 kg × 8-8-7 e non 92,5 kg alla seconda serie?", "risposta": "Volevo tenere la tecnica pulita.",
+         "rispostaIl": ieri.replace(microsecond=0).isoformat(), "commento": "Scelta difendibile solo se la tecnica cedeva davvero: ripetizioni 8-8-7 con riserva di 1-2 indicano che il carico era "
+         "alla tua portata. Alla prossima serie lunga prova 92,5 kg e valuta la velocità."},
+    ],
+    "prossima": "Squat 90 kg: punta a 8-8-8, poi sali di 2,5 kg. Affondi: una ripetizione in più per serie prima di alzare il peso."})
+metti("coach", "w-demo-0", {
+    "tipo": "settimana", "data": k(oggi - timedelta(days=7)), "creato": (datetime.now() - timedelta(days=7)).replace(microsecond=0).isoformat(), "stato": "chiuso",
+    "sintesi": "Settimana completa: 4 pesi e 2 Muay Thai. Proteine in media 1,8 g/kg.",
+    "punti": [{"testo": "Proteine medie 1,8 g/kg, dentro l'intervallo 1,6-2,2 g/kg per chi si allena.", "fonte": "Morton et al. 2018, Br J Sports Med"}],
+    "domande": [], "prossima": "Mantieni le proteine e aggiungi una serie di stacco rumeno a settimana."})
+
 # Portafoglio inventato: due fondi immaginari e un po' di liquidità
 serie, titoli, costo = [], 3800.0, 3800.0
 for x in range(120, -1, -1):
