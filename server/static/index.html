@@ -805,12 +805,13 @@ scheda("chat");
 // ---------- La rete delle schede ----------
 // Schermata iniziale: Chat al centro (la mascotte), un nodo per scheda su una sfera. Niente librerie: proiezione 3D a mano su canvas.
 const RETE = [
-  {id: "oggi", nome: "Oggi", emoji: "☀️", colore: "#f5b73c"},
-  {id: "salute", nome: "Salute", emoji: "❤️", colore: "#ff5f6d"},
-  {id: "cibo", nome: "Cibo", emoji: "🍽️", colore: "#4cc38a"},
-  {id: "soldi", nome: "Soldi", emoji: "💶", colore: "#5aa9ff"},
-  {id: "pacchi", nome: "Pacchi", emoji: "📦", colore: "#c58a5a"},
+  {id: "oggi", nome: "Oggi", colore: "#f5b73c", d: "M8 12a4 4 0 1 0 8 0a4 4 0 1 0-8 0M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"},
+  {id: "salute", nome: "Salute", colore: "#ff5f6d", d: "M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8ZM3.5 12h4l2-3 3 6 2-3h6"},
+  {id: "cibo", nome: "Cibo", colore: "#4cc38a", d: "M7 2v20M4 2v6a3 3 0 0 0 6 0V2M17 22V2c-2.2 1.4-3.5 4-3.5 7.5S15 14 17 14"},
+  {id: "soldi", nome: "Soldi", colore: "#5aa9ff", d: "M18 7.5A7 7 0 1 0 18 16.5M4 10.5h10M4 13.5h10"},
+  {id: "pacchi", nome: "Pacchi", colore: "#c58a5a", d: "M21 8 12 3 3 8v8l9 5 9-5V8ZM3 8l9 5 9-5M12 13v8M7.5 5.5l9 5"},
 ];
+RETE.forEach(r => r.path = new Path2D(r.d));
 const rete = $("#rete"), tela = $("#reteTela"), telaD = $("#reteDavanti"), ctx = tela.getContext("2d"), ctxD = telaD.getContext("2d");
 const fermo = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const VEL = fermo ? 0 : 0.0016;
@@ -821,6 +822,22 @@ RETE.forEach((r, i) => {
   const y = 1 - (i + 0.5) * 2 / RETE.length, rr = Math.sqrt(1 - y * y), a = i * 2.399963;
   r.x = Math.cos(a) * rr; r.y = y; r.z = Math.sin(a) * rr;
 });
+// Maglia: 5 nodi veri (indici 0-4) + punti piccoli sulla stessa sfera, collegati ai 3 vicini: dà l'aspetto di una rete tonda.
+const MAGLIA = (function () {
+  const pt = RETE.map(r => ({x: r.x, y: r.y, z: r.z}));
+  const N = 46;
+  for (let i = 0; i < N; i++) {
+    const y = 1 - (i + 0.5) * 2 / N, rr = Math.sqrt(1 - y * y), a = i * 2.399963 + 0.7;
+    const q = {x: Math.cos(a) * rr, y, z: Math.sin(a) * rr};
+    if (RETE.every(r => Math.hypot(r.x - q.x, r.y - q.y, r.z - q.z) > 0.42)) pt.push(q);
+  }
+  const archi = new Set();
+  pt.forEach((a, i) => {
+    pt.map((b, j) => [j, Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)]).filter(([j]) => j !== i)
+      .sort((u, v) => u[1] - v[1]).slice(0, 3).forEach(([j]) => archi.add(i < j ? i + "-" + j : j + "-" + i));
+  });
+  return {pt, archi: [...archi].map(k => k.split("-").map(Number))};
+})();
 function ridimRete() {
   dpr = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight;
   tela.width = telaD.width = W * dpr; tela.height = telaD.height = H * dpr;
@@ -832,8 +849,8 @@ function proietta(x, y, z) {
   const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
   const x1 = x * cy + z * sy, z1 = -x * sy + z * cy;
   const y1 = y * cp - z1 * sp, z2 = y * sp + z1 * cp;
-  const R = Math.min(W, H) * 0.36 * zoom, f = 3.2 / (3.2 - z2);
-  return {x: W / 2 + x1 * R * f, y: H * 0.47 + y1 * R * f, z: z2, f};
+  const R = Math.min(W * 0.37, H * 0.32) * zoom, f = 5.5 / (5.5 - z2);
+  return {x: W / 2 + x1 * R * f, y: H * 0.48 + y1 * R * f, z: z2, f, R};
 }
 function disegnaRete(t) {
   const ctxB = ctx;
@@ -841,22 +858,38 @@ function disegnaRete(t) {
   for (const k of [ctx, ctxD]) { k.setTransform(dpr, 0, 0, dpr, 0, 0); k.clearRect(0, 0, W, H); }
   const c = proietta(0, 0, 0);
   nodi = RETE.map(r => ({r, p: proietta(r.x, r.y, r.z)}));
-  // archi: dal centro a ogni nodo e fra nodi vicini (aspetto di rete neurale)
-  const archi = nodi.map(n => [c, n.p, n.r.colore, 0.5]);
-  for (let i = 0; i < RETE.length; i++) for (let j = i + 1; j < RETE.length; j++) {
-    const a = RETE[i], b = RETE[j];
-    if (Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z) < 1.45) archi.push([nodi[i].p, nodi[j].p, "#8d93a3", 0.25]);
-  }
-  archi.forEach(([a, b, col, op], k) => {
-    const al = op * (0.55 + 0.45 * ((a.z + b.z) / 2 + 1) / 2);
-    ctx.strokeStyle = col; ctx.globalAlpha = al; ctx.lineWidth = 1.4;
-    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-    if (!fermo && op > 0.4) {   // un impulso viaggia lungo l'arco
-      const u = ((t / 2200) + k * 0.37) % 1;
-      ctx.globalAlpha = Math.min(1, al * 2.4); ctx.fillStyle = col;
-      ctx.beginPath(); ctx.arc(a.x + (b.x - a.x) * u, a.y + (b.y - a.y) * u, 2.3, 0, 7); ctx.fill();
+  // contorno della sfera
+  ctx.strokeStyle = testoC; ctx.globalAlpha = 0.1; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(c.x, c.y, c.R * 1.02 * 5.5 / Math.sqrt(5.5 * 5.5 - 1) / 1.0, 0, 7); ctx.stroke();
+  // maglia: punti piccoli e collegamenti fra vicini
+  const pp = MAGLIA.pt.map(q => proietta(q.x, q.y, q.z));
+  MAGLIA.archi.forEach(([i, j], k) => {
+    const A = pp[i], B = pp[j], z = (A.z + B.z) / 2;
+    ctx.strokeStyle = testoC; ctx.globalAlpha = 0.07 + 0.17 * (z + 1) / 2; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
+    if (!fermo && k % 9 === 0) {   // qualche impulso viaggia sulla maglia
+      const u = ((t / 2600) + k * 0.19) % 1;
+      ctx.globalAlpha = 0.25 + 0.5 * (z + 1) / 2; ctx.fillStyle = accento;
+      ctx.beginPath(); ctx.arc(A.x + (B.x - A.x) * u, A.y + (B.y - A.y) * u, 1.8, 0, 7); ctx.fill();
     }
   });
+  pp.forEach((q, i) => {
+    if (i < RETE.length) return;
+    ctx.globalAlpha = 0.25 + 0.5 * (q.z + 1) / 2; ctx.fillStyle = testoC;
+    ctx.beginPath(); ctx.arc(q.x, q.y, 1.6 * q.f * zoom + 0.6, 0, 7); ctx.fill();
+  });
+  // raggi colorati dal centro a ogni scheda, con un impulso
+  nodi.forEach((n, k) => {
+    const al = 0.5 * (0.55 + 0.45 * (n.p.z + 1) / 2);
+    ctx.strokeStyle = n.r.colore; ctx.globalAlpha = al; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(n.p.x, n.p.y); ctx.stroke();
+    if (!fermo) {
+      const u = ((t / 2200) + k * 0.37) % 1;
+      ctx.globalAlpha = Math.min(1, al * 2.4); ctx.fillStyle = n.r.colore;
+      ctx.beginPath(); ctx.arc(c.x + (n.p.x - c.x) * u, c.y + (n.p.y - c.y) * u, 2.4, 0, 7); ctx.fill();
+    }
+  });
+  ctx.globalAlpha = 1;
   // nodi, dal più lontano al più vicino
   nodi.slice().sort((a, b) => a.p.z - b.p.z).forEach(n => {
     const {r, p} = n, s = p.f * zoom, rad = 27 * s, ctx = p.z > 0 ? ctxD : ctxB;
@@ -866,8 +899,9 @@ function disegnaRete(t) {
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, rad * 1.9, 0, 7); ctx.fill();
     ctx.fillStyle = carta; ctx.strokeStyle = r.colore; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(p.x, p.y, rad, 0, 7); ctx.fill(); ctx.stroke();
-    ctx.font = Math.round(rad * 0.95) + "px -apple-system, system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillStyle = testoC; ctx.fillText(r.emoji, p.x, p.y + rad * 0.06);
+    ctx.save(); const sc = rad * 1.05 / 24; ctx.translate(p.x - 12 * sc, p.y - 12 * sc); ctx.scale(sc, sc);
+    ctx.strokeStyle = r.colore; ctx.lineWidth = 1.9; ctx.lineCap = ctx.lineJoin = "round"; ctx.stroke(r.path); ctx.restore();
+    ctx.textAlign = "center"; ctx.fillStyle = testoC;
     ctx.font = "600 " + Math.max(11, Math.round(13 * s)) + "px -apple-system, system-ui, sans-serif"; ctx.textBaseline = "top";
     ctx.fillText(r.nome, p.x, p.y + rad + 6);
   });
