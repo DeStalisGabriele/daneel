@@ -22,7 +22,7 @@ testa = """<head><meta charset=utf8>
   box-shadow:0 0 0 .5px var(--sep);font:600 16px -apple-system,BlinkMacSystemFont,sans-serif}
 /* dentro l'app: niente tasto per tornare (c'è la barra in basso) e niente spazio per lui */
 html.incorporata #torna{display:none}
-html.incorporata .wrap{padding-top:calc(env(safe-area-inset-top,0px) + 16px)!important;padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))!important}
+html.incorporata .wrap{padding-top:calc(env(safe-area-inset-top,0px) + 54px)!important;padding-bottom:calc(24px + env(safe-area-inset-bottom,0px))!important}
 html.incorporata .navbar{padding-left:max(16px,env(safe-area-inset-left,0px))!important}
 html.vista footer{display:none}
 /* la vecchia Prontezza (riquadro e grafico) è sostituita dagli anelli Sonno, Recupero e Sforzo (2026-11-01) */
