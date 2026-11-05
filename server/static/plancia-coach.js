@@ -58,7 +58,8 @@
     if (doc.sintesi) h += '<p class="ch-sintesi">' + esc(doc.sintesi) + '</p>';
     if ((doc.punti || []).length) {
       h += '<ul class="ch-punti">' + doc.punti.map((p) => '<li>' + esc(p.testo) +
-        (p.fonte ? '<span class="ch-fonte">📖 ' + esc(p.fonte) + '</span>' : '') + '</li>').join("") + '</ul>';
+        (p.fonte ? '<span class="ch-fonte">📖 ' + esc(p.fonte) + '</span>' : '') +
+        (/^https?:\/\//.test(p.video || "") ? '<a class="ch-fonte" href="' + esc(p.video) + '" target="_blank" rel="noopener">▶️ Video scientifico</a>' : '') + '</li>').join("") + '</ul>';
     }
     const dom = doc.domande || [];
     if (dom.length) {
