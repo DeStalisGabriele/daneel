@@ -32,8 +32,10 @@ html.vista footer{display:none}
 viste = """<script>
 (function () {
   const VISTE = {
-    oggi:   {titolo: "Oggi",   sezioni: ["Oggi", "Studio", "Riepilogo", "Andamento", "Lettura"]},
-    salute: {titolo: "Salute", sezioni: ["Salute", "Palestra"]},
+    oggi:   {titolo: "Oggi",   sezioni: ["Oggi", "Studio", "Riepilogo", "Andamento"]},
+    salute: {titolo: "Salute", sezioni: ["Salute"]},
+    allenamento: {titolo: "Allenamento", sezioni: ["Coach", "Palestra"]},
+    letture: {titolo: "Letture", sezioni: ["Lettura"]},
     cibo:   {titolo: "Cibo",   sezioni: ["Alimentazione"]},
     soldi:  {titolo: "Soldi",  sezioni: ["Portafoglio"]},
     pacchi: {titolo: "Pacchi", sezioni: ["Pacchi"]},
@@ -67,7 +69,7 @@ s = s.replace('<div class="navbar" id="navbar"', '<a id="torna" href="./" aria-l
               '<div class="navbar" id="navbar"', 1)
 # le sezioni Pacchi e Studio le creano plancia-pacchi.js e plancia-studio.js: devono esistere prima che le viste
 # scelgano cosa mostrare
-s = s.rstrip() + '\n<script src="plancia-pacchi.js"></script>\n<script src="plancia-studio.js"></script>\n' + viste
+s = s.rstrip() + '\n<script src="plancia-pacchi.js"></script>\n<script src="plancia-studio.js"></script>\n<script src="plancia-coach.js"></script>\n' + viste
 s += '<script src="plancia-anelli.js"></script>\n'  # anelli di Salute: Sonno, Recupero, Sforzo (punteggi.py)
 s += '<script src="plancia-cibo.js"></script>\n'  # scheda Cibo: pasti di oggi, codice a barre, ricerca, peso (cibo.py)
 (qui / "static/plancia.html").write_text(s, encoding="utf-8")

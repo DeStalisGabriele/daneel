@@ -1,0 +1,6 @@
+[Unit]
+Description=Nuovo allenamento Hevy: salva e fa partire il coach
+
+[Service]
+Type=oneshot
+ExecStart=%h/bin/coach-controlla

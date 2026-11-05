@@ -1,0 +1,8 @@
+[Unit]
+Description=Ogni ora dalle 10:20 alle 22:20
+
+[Timer]
+OnCalendar=*-*-* 10..22:20:00
+
+[Install]
+WantedBy=timers.target

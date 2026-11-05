@@ -1,0 +1,6 @@
+[Unit]
+Description=Revisione settimanale del coach (allenamento e alimentazione)
+
+[Service]
+Type=oneshot
+ExecStart=%h/bin/coach-controlla --settimana

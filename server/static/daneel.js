@@ -56,6 +56,16 @@
       el("path", {d: "M102 22 Q118 2 134 14 Q120 30 102 22 Z", fill: "#3fa45b"}, foglie);
       return foglie;
     }},
+    coach: {occhi: "#ffb066", disegna({dietro, sopra, el, clipTesta}) {   // fascia sportiva arancione e un manubrio al posto dell'antenna
+      const manubrio = el("g", {}, dietro);
+      el("line", {x1: 100, y1: 42, x2: 100, y2: 30, stroke: "#9aa3b5", "stroke-width": 5, "stroke-linecap": "round"}, manubrio);
+      el("rect", {x: 78, y: 26, width: 44, height: 6, rx: 3, fill: "#7a8196"}, manubrio);
+      for (const x of [74, 120]) el("rect", {x, y: 16, width: 8, height: 26, rx: 3, fill: "#ff8a3d"}, manubrio);
+      for (const x of [66, 126]) el("rect", {x, y: 21, width: 8, height: 16, rx: 3, fill: "#e5701f"}, manubrio);
+      const fascia = el("rect", {x: 32, y: 44, width: 136, height: 16, fill: "#ff8a3d", "clip-path": clipTesta}, sopra);
+      el("rect", {x: 32, y: 49, width: 136, height: 3, fill: "#ffffff", opacity: ".85", "clip-path": clipTesta}, sopra);
+      return fascia;
+    }},
     amanuense: {occhi: "#f4c86a", disegna({dietro, el}) {              // piuma d'oca infilata in testa
       const piuma = el("g", {}, dietro);
       el("path", {d: "M116 48 Q100 18 70 0 Q108 6 124 44 Z", fill: "#f1d38a"}, piuma);

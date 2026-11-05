@@ -309,6 +309,8 @@ const AGENTI = [
    esempi: ["Riassumi le mail di oggi", "Ci sono risposte sul tirocinio?", "Prepara una bozza di risposta all'ultima mail"]},
   {id: "nutrizionista", nome: "Nutrizionista", emoji: "🥗", ruolo: "Pasti: calorie e macro da foto o testo",
    esempi: ["Quante proteine ha 150 g di petto di pollo?", "Ho mangiato pasta al tonno, 120 g: calcola", "Idee per una merenda da 30 g di proteine"]},
+  {id: "coach", nome: "Coach", emoji: "🏋️", ruolo: "Allenamento e alimentazione, solo da fonti scientifiche",
+   esempi: ["Come è andato l'ultimo allenamento?", "Quante proteine mi servono in definizione?", "Cambio qualcosa nella scheda?"]},
   {id: "amanuense", nome: "Amanuense", emoji: "✍️", ruolo: "Trascrive foto di appunti scritti a mano",
    esempi: ["Ti mando la foto di un esercizio da trascrivere", "Trascrivi questi appunti di Economia Aziendale"]},
 ];
@@ -797,6 +799,7 @@ document.querySelectorAll("#schede button").forEach(b => b.onclick = () => sched
 // La Plancia chiede di scrivere a Daneel (scheda Cibo, "Descrivi a Daneel"): si va in chat con il testo pronto.
 addEventListener("message", e => {
   if (e.origin !== location.origin || !e.data || e.data.tipo !== "scrivi") return;
+  if (e.data.agente && AGENTI.some(a => a.id === e.data.agente)) scegli(e.data.agente);
   scheda("chat"); testo.value = e.data.testo || ""; aggiornaInvia(); testo.focus();
   const r = document.createRange(); r.selectNodeContents(testo); r.collapse(false);
   const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
@@ -810,6 +813,8 @@ const RETE = [
   {id: "cibo", nome: "Cibo", colore: "#4cc38a", d: "M7 2v20M4 2v6a3 3 0 0 0 6 0V2M17 22V2c-2.2 1.4-3.5 4-3.5 7.5S15 14 17 14"},
   {id: "soldi", nome: "Soldi", colore: "#5aa9ff", d: "M18 7.5A7 7 0 1 0 18 16.5M4 10.5h10M4 13.5h10"},
   {id: "pacchi", nome: "Pacchi", colore: "#c58a5a", d: "M21 8 12 3 3 8v8l9 5 9-5V8ZM3 8l9 5 9-5M12 13v8M7.5 5.5l9 5"},
+  {id: "allenamento", nome: "Allenamento", colore: "#ff8a3d", d: "M6.5 6.5v11M17.5 6.5v11M3.5 9v6M20.5 9v6M6.5 12h11"},
+  {id: "letture", nome: "Letture", colore: "#a78bfa", d: "M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2V5ZM4 19a2 2 0 0 1 2-2h13"},
 ];
 RETE.forEach(r => r.path = new Path2D(r.d));
 const rete = $("#rete"), tela = $("#reteTela"), telaD = $("#reteDavanti"), ctx = tela.getContext("2d"), ctxD = telaD.getContext("2d");

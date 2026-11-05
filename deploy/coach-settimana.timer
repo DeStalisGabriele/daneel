@@ -1,0 +1,8 @@
+[Unit]
+Description=Ogni domenica alle 20:30
+
+[Timer]
+OnCalendar=Sun *-*-* 20:30:00
+
+[Install]
+WantedBy=timers.target

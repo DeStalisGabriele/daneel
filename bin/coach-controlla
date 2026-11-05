@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+"""Controlla se Gabriele ha un allenamento Hevy nuovo e, se sì, fa partire il coach.
+
+Gira ogni ora dalle 10:20 alle 22:20 (coach-controlla.timer). Non costa token se non c'è niente di nuovo:
+  1. ~/bin/hevy-ultimo legge l'ultimo allenamento dal profilo pubblico (Playwright);
+  2. se l'id non è ancora nella collezione `allenamenti` della Plancia, lo salva (/sync-plancia-hevy, in silenzio);
+  3. se l'allenamento è di oggi o di ieri, chiede a Daneel di affidare al subagente `coach` l'analisi e le domande
+     (arriva in chat con la notifica, etichetta "Coach"). Gli allenamenti più vecchi si salvano senza domande.
+
+  coach-controlla --settimana    revisione della settimana (domenica sera, coach-settimana.timer)
+"""
+import datetime as dt
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+BIN = Path.home() / "bin"
+
+
+def esegui(*args, **kw):
+    return subprocess.run([str(a) for a in args], capture_output=True, text=True, **kw)
+
+
+if "--settimana" in sys.argv:
+    oggi = dt.date.today()
+    iso = oggi.isocalendar()
+    compito = (f"Revisione settimanale ({iso.year}-W{iso.week:02d}, settimana che finisce oggi {oggi.isoformat()}). "
+               "Affida al subagente coach il compito «Revisione settimanale» (allenamento e alimentazione) e riporta "
+               "il suo messaggio così com'è.")
+    r = esegui(BIN / "manda-a-daneel", "--etichetta", "Coach", compito)
+    sys.exit(r.returncode)
+
+r = esegui(BIN / "hevy-ultimo")
+try:
+    ultimo = json.loads(r.stdout)
+    wid, data = ultimo["id"], ultimo["data"]
+except (ValueError, KeyError):
+    sys.exit(0)   # profilo non raggiungibile o pagina cambiata: ci pensa il giro delle 23:30, che avvisa
+
+g = esegui(BIN / "plancia-db", "get", f"allenamenti/{wid}")
+try:
+    esiste = json.loads(g.stdout).get("exists")
+except ValueError:
+    sys.exit(0)
+if esiste:
+    sys.exit(0)
+
+esegui(BIN / "manda-a-daneel", "--silenzioso", "/sync-plancia-hevy")
+oggi = dt.date.today()
+if data in (oggi.isoformat(), (oggi - dt.timedelta(days=1)).isoformat()):
+    compito = (f"Nuovo allenamento {wid} ({data}) salvato sulla Plancia. Affida al subagente coach il compito "
+               f"«Nuovo allenamento {wid}»: analisi, domande su come è andata e sulle scelte che si vedono nei dati. "
+               "Riporta il suo messaggio così com'è.")
+    esegui(BIN / "manda-a-daneel", "--etichetta", "Coach", compito)
