@@ -268,6 +268,12 @@ footer{font-size:var(--t-foot);color:var(--muted);padding-inline:4px;line-height
 #spPie .c1{fill:var(--ink);font-family:var(--f-rounded);font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
 #spPie .c2{fill:var(--muted);font-family:var(--f-text);font-size:12px}
 .sp-leg{display:grid;width:100%;min-width:0}
+/* portfolio allocation donut (same look as the spending donut) */
+#pfAlloc svg{width:200px;height:200px;display:block}
+#pfAlloc path,#pfAlloc circle.sl{transition:opacity .15s}
+@media (hover:hover){#pfAlloc svg:hover path:not(:hover){opacity:.55}}
+#pfAlloc .c1{fill:var(--ink);font-family:var(--f-rounded);font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+#pfAlloc .c2{fill:var(--muted);font-family:var(--f-text);font-size:12px}
 .sp-row{display:grid;grid-template-columns:10px minmax(0,1fr) auto 3.2em;gap:10px;align-items:center;padding:7px 6px;border:0;background:none;
   text-align:left;cursor:pointer;border-radius:8px;font-size:var(--t-sub);width:100%;font-variant-numeric:tabular-nums}
 @media (hover:hover){.sp-row:hover{background:var(--hover)}}
@@ -379,6 +385,11 @@ footer{font-size:var(--t-foot);color:var(--muted);padding-inline:4px;line-height
         <summary><span class="sp-mhead"><b>Conti del mese</b><span class="status" id="spMonthSub">rendimento, depositi, interessi, commissioni</span></span></summary>
         <div class="calc-wrap"><div class="calc" id="pfMonth"></div></div>
       </details>
+    </div>
+    <div class="card" id="pfAllocCard" hidden>
+      <div class="card-title"><b>Come è diviso il portafoglio</b><span>Azionario, obbligazioni, oro e liquidità sul totale del conto</span></div>
+      <div class="sp-body"><div id="pfAlloc"></div><div class="sp-leg" id="pfAllocLeg"></div></div>
+      <span class="status" id="pfAllocNote"></span>
     </div>
     <div class="card">
       <div class="card-title"><b>Valore dei titoli</b><span>Contro quanto hai investito, dal primo acquisto</span></div>
@@ -1154,6 +1165,37 @@ let pf = {};
 const eur = (v, dec=0) => v==null ? "—" : v.toLocaleString("it-IT",{minimumFractionDigits:dec,maximumFractionDigits:dec})+" €";
 const segno = (v, dec=0) => v==null ? "—" : (v>0?"+":v<0?"−":"")+eur(Math.abs(v),dec);
 function pfSerie(){ const m={}; for(const s of ((pf.storico&&pf.storico.serie)||[])) m[s.d]=s; return m; }
+// allocation by asset class: shares in the "oggi" doc are classified by name (equity is the default),
+// cash is the account liquidity. Bonds are listed even at 0% so the split is always complete.
+const PF_CLASSI=[["Azionario","blue"],["Obbligazioni","green"],["Oro","orange"],["Liquidità","indigo"]];
+function pfClasse(n){ n=n||""; if(/bond|obbligaz|treasury|aggregate|govt|government|t-bill|\bbtp\b/i.test(n)) return "Obbligazioni"; if(/gold|\boro\b|commodit|silver|argento/i.test(n)) return "Oro"; return "Azionario"; }
+function renderAllocazione(o){
+  const card=document.getElementById("pfAllocCard"), box=document.getElementById("pfAlloc"), leg=document.getElementById("pfAllocLeg"), note=document.getElementById("pfAllocNote");
+  const parti={"Azionario":0,"Obbligazioni":0,"Oro":0,"Liquidità":Math.max(0,o.liquidita||0)}, nomi={"Azionario":[],"Obbligazioni":[],"Oro":[]};
+  for(const p of (o.posizioni||[])){ const c=pfClasse(p.nome); parti[c]+=p.valore||0; nomi[c].push(p.nome.replace(/\s*\((Acc|Dist)\)\s*$/,"")); }
+  const tot=Object.values(parti).reduce((a,b)=>a+b,0);
+  card.hidden=!(tot>0); box.textContent=""; leg.textContent=""; note.textContent="";
+  if(!(tot>0)) return;
+  const list=PF_CLASSI.map(([nome,col])=>({nome,tot:parti[nome],col:"var(--"+col+")"}));
+  const S=200, c=S/2, r=78, w=28, vis=list.filter(k=>k.tot>0);
+  const svg=svgEl("svg",{viewBox:`0 0 ${S} ${S}`,role:"img","aria-label":"Come è diviso il portafoglio"});
+  let a=-Math.PI/2;
+  for(const k of vis){
+    const f=k.tot/tot, e=a+f*2*Math.PI, gap=vis.length>1 ? Math.min(.012, f*Math.PI*.3) : 0;
+    let el;
+    if(f>.9999) el=svgEl("circle",{cx:c,cy:c,r,fill:"none",stroke:k.col,"stroke-width":w,class:"sl"});
+    else { const s0=a+gap, s1=e-gap, P=t=>(c+r*Math.cos(t)).toFixed(2)+" "+(c+r*Math.sin(t)).toFixed(2);
+      el=svgEl("path",{d:`M ${P(s0)} A ${r} ${r} 0 ${s1-s0>Math.PI?1:0} 1 ${P(s1)}`,fill:"none",stroke:k.col,"stroke-width":w}); }
+    const ti=svgEl("title",{}); ti.textContent=k.nome+": "+eur(k.tot,2)+" ("+fmtNum(f*100,1)+"%)"; el.appendChild(ti);
+    svg.appendChild(el); a=e;
+  }
+  const t1=svgEl("text",{x:c,y:c+4,"text-anchor":"middle",class:"c1"}); t1.textContent=eur(tot);
+  const t2=svgEl("text",{x:c,y:c+22,"text-anchor":"middle",class:"c2"}); t2.textContent="totale";
+  svg.append(t1,t2); box.appendChild(svg);
+  for(const k of list) leg.appendChild(spRow(k, tot, null));
+  const det=["Azionario","Obbligazioni","Oro"].filter(n=>nomi[n].length).map(n=>n+": "+nomi[n].join(", "));
+  note.textContent=det.join(" · ");
+}
 function renderPortafoglio(){
   const o=pf.oggi, tb=document.getElementById("pfTiles"); tb.textContent="";
   const sync=document.getElementById("pfSync");
@@ -1178,6 +1220,7 @@ function renderPortafoglio(){
   const nc=document.getElementById("pfNoteCard");
   nc.hidden=!o.analisi;
   if(o.analisi){ document.getElementById("pfNote").textContent=o.analisi; document.getElementById("pfNoteDate").textContent=fmtDate(o.data); }
+  renderAllocazione(o);
   // chart: securities value vs invested, from the first purchase
   const box=document.getElementById("pfChart"); box.textContent="";
   const pts=keys.filter(k=>k>=first).map(k=>S[k]);
