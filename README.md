@@ -127,7 +127,7 @@ server/
   cibo.py                Open Food Facts lookup, your own products, meal logging
   studio.py              exam study planner (material → hours → days)
   costruisci-plancia.py  builds static/plancia.html from plancia-sorgente.html
-  static/                PWA: index.html (chat + network home), mascot, service worker, dashboard add-ons (coach, study, food, parcels)
+  static/                PWA: index.html (chat + network home), mascot, service worker, dashboard add-ons (coach, study, food, parcels), icons and iOS-style look (icone.js, aspetto.css)
 bin/                     CLI helpers used by skills and scheduled jobs (incl. coach-controlla)
 deploy/                  systemd user units (app, nightly dashboard backup, coach check and weekly review)
 skills/amazon/           example skill: Amazon product search
@@ -198,6 +198,7 @@ DANEEL_DATI=/tmp/daneel-demo/dati DANEEL_CONFIG=/tmp/daneel-demo/config DANEEL_U
 
 - [Filippo Cappa](https://github.com/filippocappa), friend and fellow builder: his assistant [Aide](https://github.com/filippocappa/aide) grew out of Daneel, and this app took many ideas back from Aide (tab bar, health scores, food logging). Daneel also runs on his server. Thanks, Filippo.
 - Built together with [Claude Code](https://claude.com/claude-code), as a coworker on the design and the code.
+- Icons: [Lucide](https://lucide.dev) (ISC), inlined in `server/static/icone.js`; the look follows Apple's iOS design language (system font, grouped lists, tinted backgrounds), styled in `server/static/aspetto.css`.
 - Barcode scanning: [ZXing](https://github.com/zxing-js/library) (Apache-2.0), vendored in `server/static/vendor/`.
 - Food data: [Open Food Facts](https://world.openfoodfacts.org) (ODbL).
 - The name comes from R. Daneel Olivaw, Asimov's robot.
