@@ -1,0 +1,70 @@
+/* Ritocchi d'aspetto della Plancia (2026-11-09), per avvicinarla alle app Apple (iOS 26):
+   icone a linea al posto delle emoji, sfondo con una tinta per scheda, liste raggruppate, anello centrale più grande.
+   Si carica dopo gli stili della pagina, quindi vince a parità di peso. */
+
+:root{--r-card:20px}
+
+/* Icone (icone.js) */
+svg.ic{display:inline-block;vertical-align:-.2em;flex:none}
+
+/* Sfondo con una tinta morbida in alto per ogni scheda (stile Salute di iOS 26): la tinta sfuma nel fondo della pagina. */
+html[data-vista]{
+  --tinta:var(--blue);
+  background-color:var(--bg);
+  background-image:linear-gradient(180deg,color-mix(in srgb,var(--tinta) 20%,var(--bg)) 0,var(--bg) 460px);
+  background-repeat:no-repeat;
+}
+html[data-vista] body{background:transparent}
+html[data-vista="oggi"]{--tinta:var(--blue)}
+html[data-vista="salute"]{--tinta:var(--pink)}
+html[data-vista="cibo"]{--tinta:var(--green)}
+html[data-vista="soldi"]{--tinta:var(--teal)}
+html[data-vista="pacchi"]{--tinta:var(--orange)}
+html[data-vista="allenamento"]{--tinta:var(--orange)}
+html[data-vista="letture"]{--tinta:var(--brown)}
+
+/* Schede più morbide */
+.card{border-radius:var(--r-card)}
+
+/* Riquadri (Salute, Cibo, Palestra, Soldi, Riepilogo) come una lista raggruppata di iOS:
+   un solo blocco arrotondato, una riga per voce con il nome a sinistra e il valore a destra, linee sottili in mezzo. */
+.tiles{display:block;background:var(--surface);border-radius:var(--r-card);overflow:hidden}
+.tile{
+  background:transparent;border-radius:0;padding:13px 16px;
+  grid-template-columns:minmax(0,1fr) auto;column-gap:14px;row-gap:1px;align-items:center;
+}
+.tile+.tile{
+  background-image:linear-gradient(var(--sep),var(--sep));
+  background-size:calc(100% - 16px) .5px;background-position:right top;background-repeat:no-repeat;
+}
+.tile .eyebrow{grid-column:1;grid-row:1;color:var(--ink);font-weight:500;font-size:var(--t-callout)}
+.tile .v{grid-column:2;grid-row:1 / span 2;margin:0;justify-content:flex-end;align-self:center;flex-wrap:nowrap}
+.tile .num{font-size:24px}
+.tile .d{grid-column:1;grid-row:2;font-size:var(--t-foot)}
+.tile.tap::after{top:50%;margin-top:-4px;right:16px}
+.tile.tap .v{padding-right:20px}
+.tile.tap .eyebrow{padding-right:0}
+@media (hover:hover){.tile.tap:hover{background-color:var(--hover)}}
+
+/* Anelli di Salute: Recupero grande al centro, Sonno e Sforzo ai lati, con un leggero alone del loro colore */
+.anelli-tre{grid-template-columns:minmax(0,1fr) minmax(0,1.45fr) minmax(0,1fr);align-items:center}
+.anello:nth-child(2) svg{width:138px;height:138px}
+.anello:nth-child(2) .nome{font-size:var(--t-callout)}
+.anello:nth-child(1) svg{--g:var(--indigo)}
+.anello:nth-child(2) svg{--g:var(--green)}
+.anello:nth-child(3) svg{--g:var(--orange)}
+.anello svg{filter:drop-shadow(0 0 7px color-mix(in srgb,var(--g,transparent) 42%,transparent))}
+.anello .giudizio{min-height:0}
+
+/* Cibo: i tre tasti con l'icona in un cerchio colorato */
+.cb-azioni button span{
+  display:grid;place-items:center;width:40px;height:40px;border-radius:50%;font-size:inherit;
+  background:color-mix(in srgb,var(--accent,var(--green)) 20%,transparent);color:var(--accent,var(--green));
+}
+.cb-azioni button{padding:14px 6px 12px;gap:8px}
+
+/* Pacchi: l'icona della fase nel suo quadrato colorato */
+.pc-icona{font-size:inherit}
+
+/* Pulsanti con un'icona dentro: spazio uniforme */
+.ch-btn,.ch-q button,.pc-azioni button{display:inline-flex;align-items:center;justify-content:center;gap:6px}

@@ -10,7 +10,7 @@
   sezione.setAttribute("aria-label", "Coach");
   sezione.innerHTML = '<div class="sec-head"><h2>Coach</h2><span class="status" id="chStato"></span></div>' +
     '<div class="card ch-card" id="chCard"><p class="ch-vuoto">Carico il coach…</p></div>' +
-    '<div class="ch-azioni"><button class="ch-btn" id="chChiedi">💬 Chiedi al coach</button></div>' +
+    '<div class="ch-azioni"><button class="ch-btn" id="chChiedi">' + IC("chat",16) + ' Chiedi al coach</button></div>' +
     '<div id="chStorico"></div>';
   const prima = document.querySelector('section[aria-label="Palestra"]');
   if (prima) prima.before(sezione); else wrap.appendChild(sezione);
@@ -68,8 +68,8 @@
     if (doc.sintesi) h += '<p class="ch-sintesi">' + esc(doc.sintesi) + '</p>';
     if ((doc.punti || []).length) {
       h += '<ul class="ch-punti">' + doc.punti.map((p) => '<li>' + esc(p.testo) +
-        (p.fonte ? '<span class="ch-fonte">📖 ' + esc(p.fonte) + '</span>' : '') +
-        (/^https?:\/\//.test(p.video || "") ? '<a class="ch-fonte" href="' + esc(p.video) + '" target="_blank" rel="noopener">▶️ Video scientifico</a>' : '') +
+        (p.fonte ? '<span class="ch-fonte">' + IC("book",13) + ' ' + esc(p.fonte) + '</span>' : '') +
+        (/^https?:\/\//.test(p.video || "") ? '<a class="ch-fonte" href="' + esc(p.video) + '" target="_blank" rel="noopener">' + IC("play",13) + ' Video scientifico</a>' : '') +
         '</li>').join("") + '</ul>';
     }
     const dom = doc.domande || [];
@@ -79,7 +79,7 @@
         (q.risposta
           ? '<div class="ris"><b>Tu:</b> ' + esc(q.risposta) + '</div>' +
             (q.commento ? '<div class="com">' + esc(q.commento) + '</div>'
-                        : (interattivo && q.inviata ? '<div class="att">🏋️ Il coach sta leggendo la tua risposta…</div>' : ""))
+                        : (interattivo && q.inviata ? '<div class="att">' + IC("barbell",15) + ' Il coach sta leggendo la tua risposta…</div>' : ""))
           : (interattivo ? '<button data-apri>Rispondi</button>' : "")) + '</div>').join("") + '</div>';
     }
     if (doc.prossima) h += '<div class="ch-pros"><b>Prossima volta</b>' + esc(doc.prossima) + '</div>';

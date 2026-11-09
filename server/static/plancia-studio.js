@@ -104,7 +104,7 @@
         ? `<div class="st-oggi"><b>Fino al ${gg(piano.inizio_sessione)}: prima passata della teoria</b><span>Lezioni e TEORIA in pari, così il ${gg(piano.inizio_sessione)} hai visto tutto: ~${ore(piano.esami.reduce((s, e) => s + e.prima_passata.ore_settimana, 0))} a settimana per i tre corsi. In sessione restano ~${ore(piano.margine_ore)} di margine.</span></div>`
         : `<div class="st-oggi"><b>Oggi niente studio d'esame in programma</b><span>Margine in sessione: ~${ore(piano.margine_ore)}.</span></div>`;
     const av = Math.min(...piano.esami.map((e) => e.ore.avanzamento));
-    const provv = av < 1 ? `<div class="st-oggi"><span>📈 Stima provvisoria: il corso è al ${Math.round(av * 100)}% e mancano ancora lezioni e file. Il piano si ricalcola da solo quando il TEORIA cresce o aggiungi esercizi e temi d'esame.</span></div>` : "";
+    const provv = av < 1 ? `<div class="st-oggi"><span>${IC("trend",14)} Stima provvisoria: il corso è al ${Math.round(av * 100)}% e mancano ancora lezioni e file. Il piano si ricalcola da solo quando il TEORIA cresce o aggiungi esercizi e temi d'esame.</span></div>` : "";
     card.innerHTML = oggi + corsie() + provv;
     card.querySelectorAll(".st-corsia").forEach((b) => b.onclick = () => apri(b.dataset.id));
   }
@@ -134,7 +134,7 @@
       }).join("");
       return `<button class="st-corsia" type="button" data-id="${esc(e.id)}" aria-label="${esc(e.nome)}: ${esc(s.testo)}">
         <div class="st-et"><b>${esc(e.breve)}</b><span style="color:${s.colore}">${esc(s.testo)}</span><small>${gg(e.data)}</small></div>
-        <div class="st-pista">${pp}${barre}<i class="st-flag" style="left:${x(e.data)}%">🏁</i></div></button>`;
+        <div class="st-pista">${pp}${barre}<i class="st-flag" style="left:${x(e.data)}%">${IC("flag",14)}</i></div></button>`;
     }).join("");
     const leg = Object.entries(COLORI).map(([k, c]) => `<span><i style="background:${c}"></i>${FASE[k]}</span>`).join("")
       + (piano.oggi < piano.inizio_sessione ? '<span><i class="tr"></i>Prima passata</span>' : "");
@@ -157,7 +157,7 @@
       + Object.entries(e.fasi).map(([k, f]) => passo(esc(f.nome),
         (f.da ? gg(f.da) + (f.a !== f.da ? " → " + gg(f.a) : "") : "nessun giorno libero") + (f.mancano > 0 ? " · mancano " + ore(f.mancano) : ""),
         ore(f.ore), COLORI[k], statoFase(f, k))).join("")
-      + passo("🏁 Esame", gg(e.data) + " · riserva " + gg(e.riserva), "", "var(--red)", "fine");
+      + passo("Esame", gg(e.data) + " · riserva " + gg(e.riserva), "", "var(--red)", "fine");
     const v = document.createElement("div");
     v.className = "st-velo";
     v.innerHTML = `<div class="st-foglio" role="dialog" aria-label="${esc(e.nome)}">

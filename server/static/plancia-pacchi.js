@@ -18,13 +18,13 @@
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
 
   const FASI = {
-    attesa:     {testo: "In attesa del corriere", colore: "var(--muted)",  passo: 0, emoji: "🏷️"},
-    viaggio:    {testo: "In viaggio",             colore: "var(--blue)",   passo: 1, emoji: "🚚"},
-    consegna:   {testo: "In consegna oggi",       colore: "var(--orange)", passo: 2, emoji: "🛵"},
-    ritiro:     {testo: "Pronto per il ritiro",   colore: "var(--purple)", passo: 2, emoji: "📍"},
-    mancata:    {testo: "Consegna non riuscita",  colore: "var(--red)",    passo: 2, emoji: "⚠️"},
-    consegnato: {testo: "Consegnato",             colore: "var(--green)",  passo: 3, emoji: "✅"},
-    problema:   {testo: "C'è un problema",        colore: "var(--red)",    passo: 1, emoji: "⚠️"},
+    attesa:     {testo: "In attesa del corriere", colore: "var(--muted)",  passo: 0, emoji: "tag"},
+    viaggio:    {testo: "In viaggio",             colore: "var(--blue)",   passo: 1, emoji: "truck"},
+    consegna:   {testo: "In consegna oggi",       colore: "var(--orange)", passo: 2, emoji: "truck"},
+    ritiro:     {testo: "Pronto per il ritiro",   colore: "var(--purple)", passo: 2, emoji: "pin"},
+    mancata:    {testo: "Consegna non riuscita",  colore: "var(--red)",    passo: 2, emoji: "alert"},
+    consegnato: {testo: "Consegnato",             colore: "var(--green)",  passo: 3, emoji: "ok"},
+    problema:   {testo: "C'è un problema",        colore: "var(--red)",    passo: 1, emoji: "alert"},
   };
   const PASSI = ["Spedito", "In viaggio", "Quasi lì", "Consegnato"];
   const fase = (p) => FASI[p.fase] || FASI.attesa;
@@ -113,7 +113,7 @@
     const f = fase(p), u = ultimo(p);
     const passi = PASSI.map((_, i) => `<i class="${i <= f.passo ? "si" : ""}"></i>`).join("");
     return `<button class="card pc-pacco" type="button" data-codice="${esc(p.codice)}" style="--c:${f.colore}">
-      <div class="pc-riga"><div class="pc-icona">${f.emoji}</div>
+      <div class="pc-riga"><div class="pc-icona" style="color:${f.colore}">${IC(f.emoji,22)}</div>
         <div style="min-width:0"><div class="pc-nome">${esc(p.nome || p.codice)}</div>
           <div class="pc-sotto">${esc([p.corriere, p.nome ? p.codice : ""].filter(Boolean).join(" · ") || "Corriere da trovare")}</div></div>
         <div class="pc-fase">${esc(f.testo)}</div></div>
@@ -128,7 +128,7 @@
     const attivi = pacchi.filter((p) => p.fase !== "consegnato").sort((a, b) => recente(b).localeCompare(recente(a)));
     const fatti = pacchi.filter((p) => p.fase === "consegnato").sort((a, b) => (b.consegnato || "").localeCompare(a.consegnato || ""));
     document.getElementById("pcAttivi").innerHTML = attivi.length ? attivi.map(scheda).join("")
-      : `<div class="pc-vuoto">📦 Nessun pacco in arrivo.<br>Scrivi un codice qui sopra, oppure lo aggiunge Daneel quando lo trova nelle mail.</div>`;
+      : `<div class="pc-vuoto">${IC("box",28)}<br>Nessun pacco in arrivo.<br>Scrivi un codice qui sopra, oppure lo aggiunge Daneel quando lo trova nelle mail.</div>`;
     document.getElementById("pcFatti").innerHTML = fatti.length ? `<div class="pc-titolo">Consegnati</div>` + fatti.map(scheda).join("") : "";
     const aperto = document.querySelector(".pc-velo");
     if (aperto) { const p = pacchi.find((x) => x.codice === aperto.dataset.codice); if (p) apri(p); }
@@ -151,7 +151,7 @@
       const p = await api("aggiungi", {codice, nome, cap});
       ["pcCodice", "pcNome", "pcCap"].forEach((id) => document.getElementById(id).value = "");
       document.activeElement && document.activeElement.blur();
-      msg(p.corriere ? `Trovato: ${p.corriere} ✅` : "Aggiunto: il corriere non ha ancora informazioni, riprovo ogni ora.");
+      msg(p.corriere ? `Trovato: ${p.corriere}` : "Aggiunto: il corriere non ha ancora informazioni, riprovo ogni ora.");
       if (!pacchi.some((x) => x.codice === p.codice)) { pacchi.push(p); disegna(); }
       apri(p);
     } catch (err) { msg(String(err), true); }
@@ -175,14 +175,14 @@
     velo.innerHTML = `<div class="pc-foglio" style="--c:${f.colore}">
       <div class="pc-testa"><div><h3>${esc(p.nome || "Pacco")}</h3><small>${esc([p.corriere, p.codice].filter(Boolean).join(" · "))}</small></div>
         <button class="pc-x" type="button" aria-label="Chiudi">✕</button></div>
-      <div class="card"><div class="pc-stato">${f.emoji} ${esc(f.testo)}</div>
+      <div class="card"><div class="pc-stato" style="color:${f.colore}">${IC(f.emoji,18)} ${esc(f.testo)}</div>
         <div class="pc-passi">${PASSI.map((_, i) => `<i class="${i <= f.passo ? "si" : ""}"></i>`).join("")}</div>
         <div class="pc-passi-et">${PASSI.map((t) => `<span>${t}</span>`).join("")}</div></div>
       <div class="card"><ol class="pc-tl">${lista}</ol>
         <span style="font-size:var(--t-cap);color:var(--muted)">${p.controllato ? "Controllato " + esc(quando(p.controllato)).toLowerCase() : ""}</span></div>
       ${(p.eventi || []).length ? "" : `<form class="pc-cap"><input placeholder="CAP di destinazione" inputmode="numeric" maxlength="10" value="${esc(p.cap || "")}"><button type="submit">Salva</button></form>`}
-      <div class="pc-azioni"><button type="button" data-a="aggiorna">🔄 Aggiorna</button>
-        <button type="button" data-a="copia">📋 Copia codice</button><button type="button" class="via" data-a="togli">🗑️ Togli</button></div>
+      <div class="pc-azioni"><button type="button" data-a="aggiorna">${IC("refresh",16)} Aggiorna</button>
+        <button type="button" data-a="copia">${IC("copy",16)} Copia codice</button><button type="button" class="via" data-a="togli">${IC("trash",16)} Togli</button></div>
     </div>`;
     velo.querySelector(".pc-foglio").style.maxHeight = Math.round((window.visualViewport?.height || window.innerHeight) * 0.9) + "px";
     velo.querySelector(".pc-x").onclick = () => velo.remove();
@@ -193,11 +193,11 @@
       if (!cap) return;
       b.disabled = true; b.textContent = "Cerco…";
       try { const n = await api("aggiungi", {codice: p.codice, cap}); pacchi = pacchi.map((x) => x.codice === n.codice ? n : x); disegna(); }
-      catch (err) { b.disabled = false; b.textContent = "⚠️ Riprova"; }
+      catch (err) { b.disabled = false; b.textContent = "Riprova"; }
     };
     velo.querySelectorAll(".pc-azioni button").forEach((b) => b.onclick = async () => {
       const a = b.dataset.a;
-      if (a === "copia") { try { await navigator.clipboard.writeText(p.codice); b.textContent = "✅ Copiato"; } catch (e) {} return; }
+      if (a === "copia") { try { await navigator.clipboard.writeText(p.codice); b.textContent = "Copiato"; } catch (e) {} return; }
       if (a === "togli") {
         if (b.dataset.sicuro !== "1") { b.dataset.sicuro = "1"; b.textContent = "Sicuro?"; return; }
         await api("togli", {codice: p.codice}).catch(() => {});
@@ -205,7 +205,7 @@
       }
       b.disabled = true; b.textContent = "Aggiorno…";
       try { const n = await api("aggiorna", {codice: p.codice}); pacchi = pacchi.map((x) => x.codice === n.codice ? n : x); disegna(); }
-      catch (err) { b.textContent = "⚠️ " + err; }
+      catch (err) { b.textContent = "Errore: " + err; }
     });
   }
 

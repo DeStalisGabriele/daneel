@@ -395,7 +395,7 @@ function aggiungiMsg(m) {
 }
 function segnaInCoda(d, id) {
   d.classList.add("in-coda"); d.dataset.id = id;
-  const s = document.createElement("span"); s.className = "coda-n"; s.textContent = "🕒 in coda · tocca per toglierlo"; d.appendChild(s);
+  const s = document.createElement("span"); s.className = "coda-n"; s.textContent = "In coda · tocca per toglierlo"; d.appendChild(s);
 }
 function mostraStoria(msg) { chat.innerHTML = ""; if (!msg.length) return vuoto(); msg.forEach(aggiungiMsg); giu(); }
 function setStato(s) { statoEl.textContent = s; }
@@ -531,7 +531,7 @@ chat.addEventListener("click", async e => {
   if (!confirm("Togliere questo messaggio dalla coda?")) return;
   const r = await api("api/coda/togli", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({id: d.dataset.id})});
   if (r.ok) { d.remove(); codaN = Math.max(0, codaN - 1); if (!codaN) pausaFino = 0; if (!occupato) setStato(statoPronto()); }
-  else { avviso("È già partito 🙂"); if (!occupato) carica(); }
+  else { avviso("È già partito"); if (!occupato) carica(); }
 });
 
 // Riduce le foto a 1600 px in JPEG, così il caricamento è veloce.
@@ -552,7 +552,7 @@ $("#file").onchange = $("#file2").onchange = async e => {
   for (const f of [...e.target.files].slice(0, 6 - foto.length)) {
     // Le immagini si riducono; tutto il resto (PDF, documenti…) parte com'è, con il suo nome.
     const immagine = f.type.startsWith("image/") && !/svg/.test(f.type);
-    if (!immagine && f.size > 25 * 1024 * 1024) { setStato(`⚠️ ${f.name} è troppo grande (massimo 25 MB)`); continue; }
+    if (!immagine && f.size > 25 * 1024 * 1024) { setStato(`${f.name} è troppo grande (massimo 25 MB)`); continue; }
     const r = immagine ? await riduci(f) : {blob: f, nome: f.name}; foto.push(r);
     const d = document.createElement("div"), x = document.createElement("button");
     if (immagine) d.innerHTML = `<img src="${r.url}" alt="">`;
@@ -631,7 +631,7 @@ invia.addEventListener("pointermove", e => {
   $("#scorri").style.transform = `translateX(${dx}px)`;
   $("#scorri").style.opacity = String(1 - Math.min(1, -dx / ANNULLA_DX) * .6);
   $("#lucchetto").style.transform = `translateY(${Math.max(dy, -BLOCCA_DY) * .5}px)`;
-  if (-dx > ANNULLA_DX) { dito = null; fermaRegistrazione(false); avviso("Vocale annullato 🗑️"); }
+  if (-dx > ANNULLA_DX) { dito = null; fermaRegistrazione(false); avviso("Vocale annullato"); }
   else if (-dy > BLOCCA_DY) {   // bloccato: si può staccare il dito, poi ■ per inviare o Annulla
     reg.bloccato = true; $("footer").classList.add("bloccato"); $("#lucchetto").style.transform = "";
     $("#scorri").style.transform = ""; aggiornaInvia();
@@ -684,7 +684,7 @@ async function attivaNotifiche() {
     await api("api/push/disiscrivi", {method: "POST", headers: {"Content-Type": "application/json"},
                                       body: JSON.stringify({endpoint: esistente.endpoint})});
     await esistente.unsubscribe().catch(() => {});
-    disegnaCampanella(false); avviso("Notifiche disattivate 🔕"); return;
+    disegnaCampanella(false); avviso("Notifiche disattivate"); return;
   }
   const permesso = await Notification.requestPermission();
   if (permesso !== "granted") { avviso("Notifiche non permesse: si riattivano da Impostazioni → Notifiche → Daneel."); return; }
@@ -692,7 +692,7 @@ async function attivaNotifiche() {
   const reg2 = await navigator.serviceWorker.ready;
   const iscr = await reg2.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: chiaveInByte(chiave)});
   await api("api/push/iscrivi", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(iscr.toJSON())});
-  disegnaCampanella(true); avviso("Notifiche attivate 🔔");
+  disegnaCampanella(true); avviso("Notifiche attivate");
 }
 campanella.onclick = () => attivaNotifiche().catch(e => avviso("Notifiche: " + e.message));
 async function avviaNotifiche() {

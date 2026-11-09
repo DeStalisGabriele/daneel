@@ -11,6 +11,7 @@ testa = """<head><meta charset=utf8>
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Daneel"><link rel="manifest" href="manifest.json"><link rel="apple-touch-icon" href="icona-180.png">
 <script src="plancia-shim.js"></script>
+<script src="icone.js"></script>
 <script>if (window.self !== window.top) document.documentElement.classList.add("incorporata");</script>
 <style>
 #botFab,#botPanel{display:none!important}
@@ -43,6 +44,7 @@ viste = """<script>
   function applica() {
     const v = VISTE[(location.hash || "").slice(1)];
     document.documentElement.classList.toggle("vista", !!v);
+    document.documentElement.dataset.vista = v ? (location.hash || "").slice(1) : "";
     let prima = true;
     for (const s of document.querySelectorAll("section[aria-label]")) {
       s.hidden = !!v && !v.sezioni.includes(s.getAttribute("aria-label"));
@@ -72,5 +74,6 @@ s = s.replace('<div class="navbar" id="navbar"', '<a id="torna" href="./" aria-l
 s = s.rstrip() + '\n<script src="plancia-pacchi.js"></script>\n<script src="plancia-studio.js"></script>\n<script src="plancia-coach.js"></script>\n' + viste
 s += '<script src="plancia-anelli.js"></script>\n'  # anelli di Salute: Sonno, Recupero, Sforzo (punteggi.py)
 s += '<script src="plancia-cibo.js"></script>\n'  # scheda Cibo: pasti di oggi, codice a barre, ricerca, peso (cibo.py)
+s += '<link rel="stylesheet" href="aspetto.css">\n'  # ritocchi d'aspetto (2026-11-09): sfondi a tinta, liste raggruppate, icone
 (qui / "static/plancia.html").write_text(s, encoding="utf-8")
 print("plancia.html:", len(s), "caratteri")

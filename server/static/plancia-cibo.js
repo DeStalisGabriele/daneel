@@ -61,9 +61,9 @@
   blocco.style.cssText = "display:grid;gap:12px";
   blocco.innerHTML = `
     <div class="card cb-azioni">
-      <button type="button" id="cbScan"><span>📷</span>Codice a barre</button>
-      <button type="button" id="cbCerca"><span>🔎</span>Cerca alimento</button>
-      <button type="button" id="cbDescrivi"><span>💬</span>Descrivi a Daneel</button>
+      <button type="button" id="cbScan"><span>${IC("barcode",26)}</span>Codice a barre</button>
+      <button type="button" id="cbCerca"><span>${IC("search",26)}</span>Cerca alimento</button>
+      <button type="button" id="cbDescrivi"><span>${IC("type",26)}</span>Descrivi a Daneel</button>
     </div>
     <div class="card cb-tot" id="cbOggi"><div class="card-title"><b>Pasti di oggi</b><span>Carico…</span></div></div>
     <div class="card cb-peso" id="cbPeso"><div class="card-title"><b>Peso</b><span>Carico…</span></div></div>`;
@@ -197,7 +197,7 @@
       <div class="cb-vuoto">Valori per 100 g</div>
       <div class="cb-campi">${campo("naKcal", "Kcal", "0")}${campo("naProt", "Proteine (g)", "0")}${campo("naCarb", "Carboidrati (g)", "0")}${campo("naGrassi", "Grassi (g)", "0")}${campo("naPorz", "Porzione (g)", "facoltativa")}</div>
       <button class="cb-ok" type="button" id="naSalva">Salva e aggiungi al pasto</button>
-      <button class="cb-ok" type="button" id="naDaneel" style="background:var(--fill);color:var(--ink)">📷 Manda la foto dell'etichetta a Daneel</button>
+      <button class="cb-ok" type="button" id="naDaneel" style="background:var(--fill);color:var(--ink)">${IC("camera",18)} Manda la foto dell'etichetta a Daneel</button>
       <div class="cb-errore" id="naErr"></div>`);
     const val = (id) => v.querySelector("#" + id).value.trim().replace(",", ".");
     v.querySelector("#naSalva").onclick = (e) => {
