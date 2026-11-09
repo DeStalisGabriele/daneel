@@ -99,11 +99,23 @@ async def _sempre_fresca(request, call_next):
     return risposta
 
 
+def _scrivi_atomico(f: Path, testo: str, riservato: bool = False):
+    """Scrive in un file accanto e poi lo sostituisce: se il server si ferma a metà, resta la versione vecchia intera
+    (prima coda.json e le iscrizioni push si scrivevano sul posto e potevano restare tagliati). Con riservato=True il
+    file nasce già leggibile solo dal proprietario (0600), senza il momento in cui è aperto a tutti."""
+    f.parent.mkdir(parents=True, exist_ok=True)
+    tmp = f.with_name(f.name + ".tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600 if riservato else 0o666)
+    with os.fdopen(fd, "w", encoding="utf-8") as h:
+        h.write(testo)
+        h.flush()
+        os.fsync(h.fileno())
+    os.replace(tmp, f)
+
+
 def _token() -> str:
     if not TOKEN_FILE.exists():
-        TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
-        TOKEN_FILE.write_text(secrets.token_urlsafe(24))
-        TOKEN_FILE.chmod(0o600)
+        _scrivi_atomico(TOKEN_FILE, secrets.token_urlsafe(24), riservato=True)
     return TOKEN_FILE.read_text().strip()
 
 
@@ -219,8 +231,7 @@ def _leggi_coda() -> dict:
 
 
 def _scrivi_coda(c: dict):
-    CODA.parent.mkdir(parents=True, exist_ok=True)
-    CODA.write_text(json.dumps(c, ensure_ascii=False))
+    _scrivi_atomico(CODA, json.dumps(c, ensure_ascii=False))
 
 
 def _accoda(voce: dict, in_testa: bool = False):
@@ -314,7 +325,7 @@ def _manda_push(dati: dict) -> int:
                 tenute.append(s)
             log.warning("push fallita (%s): %s", stato, ex)
     if len(tenute) != len(iscrizioni):
-        ISCRIZIONI.write_text(json.dumps(tenute))
+        _scrivi_atomico(ISCRIZIONI, json.dumps(tenute), riservato=True)
     return mandate
 
 
@@ -696,9 +707,8 @@ async def push_iscrivi(iscrizione: dict, authorization: str | None = Header(None
     if not str(iscrizione.get("endpoint", "")).startswith("https://") or "keys" not in iscrizione:
         raise HTTPException(400, "iscrizione non valida")
     altre = [s for s in _leggi_iscrizioni() if s.get("endpoint") != iscrizione["endpoint"]]
-    DATI.mkdir(parents=True, exist_ok=True)
-    ISCRIZIONI.write_text(json.dumps(altre + [{"endpoint": iscrizione["endpoint"], "keys": iscrizione["keys"]}]))
-    ISCRIZIONI.chmod(0o600)
+    _scrivi_atomico(ISCRIZIONI, json.dumps(altre + [{"endpoint": iscrizione["endpoint"], "keys": iscrizione["keys"]}]),
+                    riservato=True)
     return {"ok": True}
 
 
@@ -706,7 +716,7 @@ async def push_iscrivi(iscrizione: dict, authorization: str | None = Header(None
 async def push_disiscrivi(dati: dict, authorization: str | None = Header(None)):
     _controlla(authorization)
     altre = [s for s in _leggi_iscrizioni() if s.get("endpoint") != dati.get("endpoint")]
-    ISCRIZIONI.write_text(json.dumps(altre))
+    _scrivi_atomico(ISCRIZIONI, json.dumps(altre), riservato=True)
     return {"ok": True}
 
 
