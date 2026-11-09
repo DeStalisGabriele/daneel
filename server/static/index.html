@@ -109,7 +109,7 @@ html.tastiera body > footer { margin-bottom: 0; }
 footer { padding-bottom: 10px !important; }
 html.tastiera footer { padding-bottom: 8px !important; }
 /* La rete: schermata iniziale. Chat al centro, un nodo per scheda; si ruota col dito, si zooma a pizzico. */
-#rete { position: fixed; inset: 0; z-index: 40; background: radial-gradient(ellipse at 50% 45%, color-mix(in srgb, var(--accento) 14%, var(--sfondo)), var(--sfondo) 70%);
+#rete { position: fixed; inset: 0; z-index: 40; background: radial-gradient(ellipse at 50% 40%, color-mix(in srgb, var(--tinta, var(--accento)) 24%, var(--sfondo)), var(--sfondo) 74%);
   transition: opacity .25s; touch-action: none; user-select: none; -webkit-user-select: none; }
 #rete.nascosta { opacity: 0; pointer-events: none; }
 #rete canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
@@ -857,12 +857,21 @@ function proietta(x, y, z) {
   const R = Math.min(W * 0.37, H * 0.32) * zoom, f = 5.5 / (5.5 - z2);
   return {x: W / 2 + x1 * R * f, y: H * 0.48 + y1 * R * f, z: z2, f, R};
 }
+// La tinta dello sfondo segue il nodo che passa davanti: si avvicina un po' per volta e si scrive solo se cambia.
+let tintaRGB = [109, 156, 255], tintaScritta = "";
+function aggiornaTinta(hex) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i.exec(hex); if (!m) return;
+  for (let i = 0; i < 3; i++) tintaRGB[i] += (parseInt(m[i + 1], 16) - tintaRGB[i]) * 0.04;
+  const v = "rgb(" + tintaRGB.map(Math.round).join(",") + ")";
+  if (v !== tintaScritta) { tintaScritta = v; rete.style.setProperty("--tinta", v); }
+}
 function disegnaRete(t) {
   const ctxB = ctx;
   const testoC = colore("--testo") || "#fff", accento = colore("--accento") || "#6d9cff", carta = colore("--carta") || "#1a1d24";
   for (const k of [ctx, ctxD]) { k.setTransform(dpr, 0, 0, dpr, 0, 0); k.clearRect(0, 0, W, H); }
   const c = proietta(0, 0, 0);
   nodi = RETE.map(r => ({r, p: proietta(r.x, r.y, r.z)}));
+  aggiornaTinta(nodi.reduce((a, b) => b.p.z > a.p.z ? b : a).r.colore);
   // contorno della sfera
   ctx.strokeStyle = testoC; ctx.globalAlpha = 0.1; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.arc(c.x, c.y, c.R * 1.02 * 5.5 / Math.sqrt(5.5 * 5.5 - 1) / 1.0, 0, 7); ctx.stroke();
@@ -870,9 +879,9 @@ function disegnaRete(t) {
   const pp = MAGLIA.pt.map(q => proietta(q.x, q.y, q.z));
   MAGLIA.archi.forEach(([i, j], k) => {
     const A = pp[i], B = pp[j], z = (A.z + B.z) / 2;
-    ctx.strokeStyle = testoC; ctx.globalAlpha = 0.07 + 0.17 * (z + 1) / 2; ctx.lineWidth = 1;
+    ctx.strokeStyle = testoC; ctx.globalAlpha = 0.05 + 0.11 * (z + 1) / 2; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
-    if (!fermo && k % 9 === 0) {   // qualche impulso viaggia sulla maglia
+    if (!fermo && k % 14 === 0) {   // qualche impulso viaggia sulla maglia
       const u = ((t / 2600) + k * 0.19) % 1;
       ctx.globalAlpha = 0.25 + 0.5 * (z + 1) / 2; ctx.fillStyle = accento;
       ctx.beginPath(); ctx.arc(A.x + (B.x - A.x) * u, A.y + (B.y - A.y) * u, 1.8, 0, 7); ctx.fill();
@@ -880,13 +889,13 @@ function disegnaRete(t) {
   });
   pp.forEach((q, i) => {
     if (i < RETE.length) return;
-    ctx.globalAlpha = 0.25 + 0.5 * (q.z + 1) / 2; ctx.fillStyle = testoC;
+    ctx.globalAlpha = 0.18 + 0.34 * (q.z + 1) / 2; ctx.fillStyle = testoC;
     ctx.beginPath(); ctx.arc(q.x, q.y, 1.6 * q.f * zoom + 0.6, 0, 7); ctx.fill();
   });
   // raggi colorati dal centro a ogni scheda, con un impulso
   nodi.forEach((n, k) => {
-    const al = 0.5 * (0.55 + 0.45 * (n.p.z + 1) / 2);
-    ctx.strokeStyle = n.r.colore; ctx.globalAlpha = al; ctx.lineWidth = 1.5;
+    const al = 0.36 * (0.55 + 0.45 * (n.p.z + 1) / 2);
+    ctx.strokeStyle = n.r.colore; ctx.globalAlpha = al; ctx.lineWidth = 1.2;
     ctx.beginPath(); ctx.moveTo(c.x, c.y); ctx.lineTo(n.p.x, n.p.y); ctx.stroke();
     if (!fermo) {
       const u = ((t / 2200) + k * 0.37) % 1;
@@ -899,24 +908,29 @@ function disegnaRete(t) {
   nodi.slice().sort((a, b) => a.p.z - b.p.z).forEach(n => {
     const {r, p} = n, s = p.f * zoom, rad = 27 * s, ctx = p.z > 0 ? ctxD : ctxB;
     n.rad = rad; ctx.globalAlpha = 0.65 + 0.35 * (p.z + 1) / 2;
-    const g = ctx.createRadialGradient(p.x, p.y, rad * 0.4, p.x, p.y, rad * 1.9);
-    g.addColorStop(0, r.colore + "55"); g.addColorStop(1, r.colore + "00");
-    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, rad * 1.9, 0, 7); ctx.fill();
-    ctx.fillStyle = carta; ctx.strokeStyle = r.colore; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(p.x, p.y, rad, 0, 7); ctx.fill(); ctx.stroke();
+    const g = ctx.createRadialGradient(p.x, p.y, rad * 0.5, p.x, p.y, rad * 1.7);
+    g.addColorStop(0, r.colore + "30"); g.addColorStop(1, r.colore + "00");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, rad * 1.7, 0, 7); ctx.fill();
+    // disco di vetro: fondo scuro, velo del colore, riflesso in alto e bordo sottile
+    ctx.beginPath(); ctx.arc(p.x, p.y, rad, 0, 7); ctx.fillStyle = carta; ctx.fill();
+    ctx.fillStyle = r.colore + "26"; ctx.fill();
+    const hl = ctx.createLinearGradient(p.x, p.y - rad, p.x, p.y + rad);
+    hl.addColorStop(0, "rgba(255,255,255,.20)"); hl.addColorStop(0.5, "rgba(255,255,255,0)");
+    ctx.fillStyle = hl; ctx.fill();
+    ctx.strokeStyle = r.colore + "cc"; ctx.lineWidth = 1.5; ctx.stroke();
     ctx.save(); const sc = rad * 1.05 / 24; ctx.translate(p.x - 12 * sc, p.y - 12 * sc); ctx.scale(sc, sc);
     ctx.strokeStyle = r.colore; ctx.lineWidth = 1.9; ctx.lineCap = ctx.lineJoin = "round"; ctx.stroke(r.path); ctx.restore();
     ctx.textAlign = "center"; ctx.fillStyle = testoC;
-    ctx.font = "600 " + Math.max(11, Math.round(13 * s)) + "px -apple-system, system-ui, sans-serif"; ctx.textBaseline = "top";
+    ctx.font = "500 " + Math.max(11, Math.round(13 * s)) + "px -apple-system, system-ui, sans-serif"; ctx.textBaseline = "top";
     ctx.fillText(r.nome, p.x, p.y + rad + 6);
   });
   ctxD.globalAlpha = ctxB.globalAlpha = 1;
   // nodo centrale: la mascotte è un elemento a parte, qui solo l'alone e la scritta
   const rc = Math.min(W, H) * 0.12 * zoom, g = ctx.createRadialGradient(c.x, c.y, rc * 0.5, c.x, c.y, rc * 2.2);
-  g.addColorStop(0, accento + "44"); g.addColorStop(1, accento + "00");
+  g.addColorStop(0, accento + "2a"); g.addColorStop(1, accento + "00");
   ctx.fillStyle = g; ctx.beginPath(); ctx.arc(c.x, c.y, rc * 2.2, 0, 7); ctx.fill();
-  ctx.strokeStyle = accento; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(c.x, c.y, rc, 0, 7); ctx.stroke();
-  ctx.font = "600 13px -apple-system, system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "top"; ctx.fillStyle = testoC;
+  ctx.strokeStyle = accento; ctx.globalAlpha = 0.85; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(c.x, c.y, rc, 0, 7); ctx.stroke(); ctx.globalAlpha = 1;
+  ctx.font = "500 13px -apple-system, system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "top"; ctx.fillStyle = testoC;
   ctx.fillText("Chat", c.x, c.y + rc + 6);
   centroRete = {x: c.x, y: c.y, rad: rc};
   if (mascotteRete) { mascotteRete.el.style.left = c.x + "px"; mascotteRete.el.style.top = c.y + "px"; }
