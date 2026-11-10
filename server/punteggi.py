@@ -9,6 +9,11 @@ solo conti, sempre rispetto alla media personale di Gabriele (vedi la pagina "Pu
   almeno 5 giorni di base il punteggio è "provvisorio".
 - Sforzo: passi (pieni a 10.000) o calorie attive (piene a 600) fino a 35 punti, pesi fino a 45 (pieni a 90 minuti
   su Hevy), Muay Thai 45; massimo 100. L'obiettivo del giorno sale con il recupero.
+- Malattia (collezione `malattia`, un documento per giorno: sintomi, febbre, gravità, note; dal 2026-11-10): i giorni
+  segnati come malattia non entrano nelle medie di riferimento (HRV, FC a riposo, ore e orari del sonno), così una
+  malattia non sposta per settimane il "normale" di Gabriele. Il giorno di malattia i punteggi si calcolano lo stesso
+  (si vede quanto si è scostato) ma sono marcati, e per lo Sforzo non c'è obiettivo: è un giorno di riposo.
+  Scelta nostra, non validata da uno studio.
 """
 
 import json
@@ -74,7 +79,7 @@ def _z(v, storico):
 
 
 def calcola(giorni: int = 30) -> list[dict]:
-    salute, allen, gg = _leggi("salute"), _leggi("allenamenti"), _leggi("giorni")
+    salute, allen, gg, mal = _leggi("salute"), _leggi("allenamenti"), _leggi("giorni"), _leggi("malattia")
     oggi = date.today()
     tutte = sorted(set(salute) | {oggi.isoformat()})
     inizio = max(date.fromisoformat(tutte[0]), oggi - timedelta(days=giorni - 1))
@@ -98,13 +103,14 @@ def calcola(giorni: int = 30) -> list[dict]:
         k = d.isoformat()
         s = salute.get(k, {})
         prima = [(d - timedelta(days=i)).isoformat() for i in range(1, 31)]
+        base_ok = [p for p in prima if p not in mal]          # i giorni di malattia non fanno media
 
         # --- Sonno
         sonno = None
         dett_sonno = {}
         o = ore(k)
         if o:
-            notti = sorted(x for x in (ore(p) for p in prima) if x)
+            notti = sorted(x for x in (ore(p) for p in base_ok) if x)
             if len(notti) >= 5:
                 taglio = max(1, len(notti) // 10)
                 base = mean(notti[taglio:-taglio] or notti)
@@ -120,7 +126,7 @@ def calcola(giorni: int = 30) -> list[dict]:
             eff = o / (o + sveglio) if o + sveglio else 1
             p_eff = _tra((eff - 0.85) / (0.97 - 0.85) * 100, 0, 100)
             ora = _ora_addormentamento(fasi.get("inizio"))
-            storiche = [x for x in (_ora_addormentamento((salute.get(p, {}).get("sonno") or {}).get("inizio")) for p in prima[:14]) if x is not None]
+            storiche = [x for x in (_ora_addormentamento((salute.get(p, {}).get("sonno") or {}).get("inizio")) for p in base_ok[:14]) if x is not None]
             if ora is not None and len(storiche) >= 4:
                 scarto = abs(ora - mean(storiche))
                 p_reg = _tra(100 - (scarto - 30) / 90 * 100, 0, 100)
@@ -132,9 +138,11 @@ def calcola(giorni: int = 30) -> list[dict]:
 
         # --- Recupero
         hrv, fc = _num(s.get("hrv")), _num(s.get("fc_riposo"))
-        zh = _z(math.log(hrv), [math.log(x) for x in (_num(salute.get(p, {}).get("hrv")) for p in prima) if x]) if hrv else None
-        zf = _z(fc, [_num(salute.get(p, {}).get("fc_riposo")) for p in prima]) if fc else None
-        base_giorni = sum(1 for p in prima if _num(salute.get(p, {}).get("hrv")))
+        storia_hrv = [x for x in (_num(salute.get(p, {}).get("hrv")) for p in base_ok) if x]
+        storia_fc = [x for x in (_num(salute.get(p, {}).get("fc_riposo")) for p in base_ok) if x]
+        zh = _z(math.log(hrv), [math.log(x) for x in storia_hrv]) if hrv else None
+        zf = _z(fc, storia_fc) if fc else None
+        base_giorni = len(storia_hrv)
         recupero = None
         if zh is not None or zf is not None:
             v = 60 + 16 * (zh or 0) - 11 * (zf or 0) + (0.2 * (sonno - 70) if sonno is not None else 0)
@@ -148,10 +156,22 @@ def calcola(giorni: int = 30) -> list[dict]:
         sforzo = round(min(100, movimento + pesi + mt)) if (passi or kcal or pesi or mt) else None
         obiettivo = round(30 + 0.4 * recupero) if recupero is not None else None
 
+        # --- Malattia: dati segnati a mano (collezione `malattia`)
+        mk, malattia = mal.get(k), None
+        if mk is not None:
+            n = 1
+            while (d - timedelta(days=n)).isoformat() in mal:
+                n += 1
+            malattia = {"sintomi": mk.get("sintomi") or [], "febbre": _num(mk.get("febbre")), "gravita": mk.get("gravita"),
+                        "note": mk.get("note") or "", "giornoDellaMalattia": n}
+            obiettivo = None            # giorno di riposo: niente obiettivo di sforzo
+
         out.append({"data": k, "sonno": sonno, "recupero": recupero, "sforzo": sforzo, "obiettivoSforzo": obiettivo,
-                    "provvisorio": base_giorni < 14, "dettagli": {
+                    "provvisorio": base_giorni < 14, "malattia": malattia, "dettagli": {
                         "sonno": dett_sonno, "hrv": hrv, "fcRiposo": fc, "zHrv": round(zh, 2) if zh is not None else None,
                         "zFc": round(zf, 2) if zf is not None else None, "giorniDiBase": base_giorni,
+                        "hrvMedia": round(math.exp(mean(math.log(x) for x in storia_hrv)), 1) if storia_hrv else None,
+                        "fcMedia": round(mean(storia_fc), 1) if storia_fc else None,
                         "passi": passi, "kcalAttive": kcal, "minutiPesi": pesi_per_giorno.get(k), "muaythai": bool(mt)}})
         d += timedelta(days=1)
     return out

@@ -72,6 +72,8 @@ The dashboard is a single HTML page originally built as a claude.ai Artifact. A 
 
 Tap a ring to see exactly how the number was calculated.
 
+**Sick days.** The Health tab has an *Illness* card: log one or more days with symptoms, fever, severity and a note (stored in the `malattia` collection, one document per day), and see that day's HRV, resting heart rate, sleep and steps next to your own average. Sick days are left out of the baselines, so an illness doesn't drag your "normal" down for weeks, and the Strain ring shows a rest day instead of a target. Just numbers: no diagnosis, no advice.
+
 ### Exam study planner
 For every exam, [`studio.py`](server/studio.py) works out when to start studying and how to split the time — again with no model call:
 - **Measures the course folder:** words and images of your notes file (projected to the end of the course, since it grows with every lecture), pages of exercise PDFs and past exam papers (counted once per date, even if you have several copies).

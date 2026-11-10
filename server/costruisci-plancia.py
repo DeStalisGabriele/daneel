@@ -73,6 +73,7 @@ s = s.replace('<div class="navbar" id="navbar"', '<a id="torna" href="./" aria-l
 # scelgano cosa mostrare
 s = s.rstrip() + '\n<script src="plancia-pacchi.js"></script>\n<script src="plancia-studio.js"></script>\n<script src="plancia-coach.js"></script>\n' + viste
 s += '<script src="plancia-anelli.js"></script>\n'  # anelli di Salute: Sonno, Recupero, Sforzo (punteggi.py)
+s += '<script src="plancia-malattia.js"></script>\n'  # scheda Malattia in Salute: giorni, sintomi e dati di salute (punteggi.py)
 s += '<script src="plancia-cibo.js"></script>\n'  # scheda Cibo: pasti di oggi, codice a barre, ricerca, peso (cibo.py)
 s += '<link rel="stylesheet" href="aspetto.css">\n'  # ritocchi d'aspetto (2026-11-09): sfondi a tinta, liste raggruppate, icone
 (qui / "static/plancia.html").write_text(s, encoding="utf-8")

@@ -41,9 +41,9 @@
     {id: "sonno", nome: "Sonno", colore: "var(--indigo)",
      giudizio: (v) => v >= 85 ? "Ottimo" : v >= 70 ? "Buono" : "Sotto il fabbisogno"},
     {id: "recupero", nome: "Recupero", colore: "var(--green)",
-     giudizio: (v) => v >= 67 ? "Pronto per spingere" : v >= 34 ? "Giornata normale" : "Meglio andare leggero"},
+     giudizio: (v, g) => g.malattia ? "In malattia: riposo" : v >= 67 ? "Pronto per spingere" : v >= 34 ? "Giornata normale" : "Meglio andare leggero"},
     {id: "sforzo", nome: "Sforzo", colore: "var(--orange)",
-     giudizio: (v, g) => g.obiettivoSforzo != null ? `${v} su ${g.obiettivoSforzo} di obiettivo` : "Oggi"},
+     giudizio: (v, g) => g.malattia ? "Giorno di riposo (malattia)" : g.obiettivoSforzo != null ? `${v} su ${g.obiettivoSforzo} di obiettivo` : "Oggi"},
   ];
   let dati = [], scelta = null;
   const fmt = (n, d = 0) => n == null ? "—" : Number(n).toLocaleString("it-IT", {maximumFractionDigits: d});
@@ -81,6 +81,8 @@
     if (m.id === "recupero") righe = [["HRV", fmt(d.hrv) + " ms"], ["Rispetto alla tua media (z)", fmt(d.zHrv, 2)],
       ["FC a riposo", fmt(d.fcRiposo) + " bpm"], ["Rispetto alla tua media (z)", fmt(d.zFc, 2)],
       ["Sonno di stanotte", fmt(g.sonno)], ["Giorni di base (servono 14)", fmt(d.giorniDiBase)]];
+    if (m.id === "recupero" && g.malattia) righe.push(["Malattia", [...(g.malattia.sintomi || []), g.malattia.febbre ? "febbre " + fmt(g.malattia.febbre, 1) + " °C" : ""].filter(Boolean).join(", ") || "segnata"],
+      ["HRV / FC: tua media (senza i giorni di malattia)", fmt(d.hrvMedia) + " ms / " + fmt(d.fcMedia) + " bpm"]);
     if (m.id === "sforzo") righe = [["Passi", fmt(d.passi)], ["Calorie attive", d.kcalAttive ? fmt(d.kcalAttive) + " kcal" : "—"],
       ["Pesi (Hevy)", d.minutiPesi ? fmt(d.minutiPesi) + " min" : "—"], ["Muay Thai", d.muaythai ? "Sì" : "—"],
       ["Obiettivo di oggi (dal recupero)", fmt(g.obiettivoSforzo)]];
@@ -104,7 +106,7 @@
     if (m) dett.innerHTML = dettagli(m, valore(m, g).g);
     document.getElementById("anelliNota").textContent = g.provvisorio
       ? "Provvisori: diventano affidabili con almeno 14 giorni di dati. Tocca un anello per il calcolo."
-      : "Rispetto alla tua media degli ultimi 30 giorni. Tocca un anello per il calcolo.";
+      : "Rispetto alla tua media degli ultimi 30 giorni (i giorni di malattia non contano). Tocca un anello per il calcolo.";
   }
 
   let attesa = null;
