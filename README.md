@@ -15,6 +15,7 @@ Daneel is a small Progressive Web App (PWA) that you add to your iPhone home scr
   <img src="docs/screenshots/1-chat.png" width="230" alt="Chat">
   <img src="docs/screenshots/3-oggi.png" width="230" alt="Today">
   <img src="docs/screenshots/4-salute.png" width="230" alt="Health">
+  <img src="docs/screenshots/16-malattia.png" width="230" alt="Illness card with the sick days' health data (fake)">
 </p>
 <p align="center">
   <img src="docs/screenshots/5-cibo.png" width="230" alt="Food">

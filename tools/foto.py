@@ -83,6 +83,12 @@ def main():
             vai(scheda)
             foto(nome)
 
+        # 16 · Salute: la card Malattia (tre giorni inventati, con i dati di salute accanto alla media)
+        vai("salute")
+        frame().evaluate("() => document.querySelector('.card.mal').scrollIntoView({block: 'start'}); window.scrollBy(0, -72)")
+        pg.wait_for_timeout(900)
+        foto("16-malattia.png")
+
         # 9-10 · Studio e il suo dettaglio
         vai("oggi")
         frame().evaluate("() => document.querySelector('section[aria-label=\"Studio\"]').scrollIntoView()")
@@ -113,10 +119,10 @@ def main():
             fr.locator("#" + campo).fill(valore)
         foto("12-cibo-nuovo.png")
 
-        # 8 · le mascotte: sette umori e i sei subagenti (collage senza barra)
+        # 8 · le mascotte: sette umori e i sette subagenti (collage senza barra)
         pg.reload()
         pg.wait_for_timeout(800)
-        pg.set_viewport_size({"width": 900, "height": 400})
+        pg.set_viewport_size({"width": 1000, "height": 400})
         pg.evaluate("""() => {
           document.querySelectorAll('body > *').forEach(e => e.style.display = 'none');
           const g = document.createElement('div');
@@ -127,7 +133,7 @@ def main():
               c.append(nome); r.appendChild(c); }); g.appendChild(r); };
           riga(['calmo', 'ascolta', 'pensa', 'parla', 'felice', 'dorme', 'confuso'].map(u => [u, {}, u]));
           riga([['Daneel', {}], ['Calendario', {figura: 'calendario'}], ['Postino', {figura: 'postino'}],
-                ['Nutrizionista', {figura: 'nutrizionista'}], ['Coach', {figura: 'coach'}], ['Amanuense', {figura: 'amanuense'}]]);
+                ['Nutrizionista', {figura: 'nutrizionista'}], ['Coach', {figura: 'coach'}], ['Medico', {figura: 'medico'}], ['Amanuense', {figura: 'amanuense'}]]);
           document.body.appendChild(g);
         }""")
         pg.wait_for_timeout(1200)

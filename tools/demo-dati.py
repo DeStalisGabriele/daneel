@@ -58,6 +58,11 @@ MENU = {
     "cena": [lambda: pasto(voce("Salmone", 180, 208, 20, 0, 13), voce("Patate", 250, 77, 2, 17, .1), voce("Insalata mista", 100, 20, 1.3, 3, .2)),
              lambda: pasto(voce("Uova", 150, 143, 12.6, .7, 9.5), voce("Pane integrale", 100, 247, 13, 41, 3.4), voce("Spinaci", 150, 23, 2.9, 3.6, .4))],
 }
+# giorni fa → (HRV, FC a riposo): tutto inventato
+MALATO = {6: (51.0, 63), 5: (43.0, 68), 4: (49.0, 64)}
+SINTOMI_DEMO = {6: ["Mal di gola", "Stanchezza"], 5: ["Febbre", "Mal di gola", "Tosse", "Dolori muscolari"], 4: ["Tosse", "Raffreddore"]}
+FEBBRE_DEMO = {5: 38.1}
+NOTE_DEMO = {5: "Giornata a letto, tanta acqua."}
 PESI_GIORNI = {0, 2, 4, 5}  # lun=0: pesi mar, gio, ven, dom come nella Plancia
 peso = 72.4
 for i in range(GIORNI, -1, -1):
@@ -77,12 +82,19 @@ for i in range(GIORNI, -1, -1):
     if i % 4 == 0:
         peso = round(peso - random.uniform(0, .25), 1)
         s["peso"] = peso
+    if i in MALATO:  # tre giorni di raffreddore con febbre (inventati): HRV in calo, FC a riposo in salita, meno passi
+        s["hrv"], s["fc_riposo"] = MALATO[i]
+        if "passi" in s:
+            s["passi"] = random.choice([2100, 2600, 3300])
+            s["kcal attive"] = random.choice([90, 120, 160])
+        metti("malattia", k(d), {"data": k(d), "sintomi": SINTOMI_DEMO[i], "febbre": FEBBRE_DEMO.get(i), "gravita": 2 if i == 5 else 1,
+                                  "note": NOTE_DEMO.get(i, ""), "inserito": k(d) + "T20:00:00+01:00"})
     metti("salute", k(d), s)
 
     h = {x: random.random() < .9 for x in ("sveglia", "acqua", "letto", "colazione", "pranzo", "merenda", "cena", "telefono", "lettura")}
     if w < 5:
         h["studio"] = random.random() < .8
-    if w in (1, 3):
+    if w in (1, 3) and i not in MALATO:
         h["muaythai"] = True
     giorno = {"h": h, "sonno": round(ore, 1), "sonnoFonte": "apple"}
     if i > 0 or True:
@@ -93,7 +105,7 @@ for i in range(GIORNI, -1, -1):
             if h.get(nome):
                 cibo[nome] = random.choice(opzioni)()
         giorno["cibo"] = cibo
-    if w in PESI_GIORNI and i > 0:
+    if w in PESI_GIORNI and i > 0 and i not in MALATO:
         h["pesi"] = True
         wid = f"demo{i:02d}"
         es = [("Panca piana (bilanciere)", 70), ("Squat (bilanciere)", 95), ("Stacco rumeno", 85), ("Trazioni zavorrate", 15)]
