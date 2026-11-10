@@ -66,6 +66,16 @@
       el("rect", {x: 32, y: 49, width: 136, height: 3, fill: "#ffffff", opacity: ".85", "clip-path": clipTesta}, sopra);
       return fascia;
     }},
+    medico: {occhi: "#7fd6ff", disegna({dietro, sopra, el, clipTesta}) {   // fascia bianca con croce rossa e specchio frontale
+      const specchio = el("g", {}, dietro);
+      el("line", {x1: 100, y1: 42, x2: 100, y2: 30, stroke: "#b9c2d3", "stroke-width": 4, "stroke-linecap": "round"}, specchio);
+      el("circle", {cx: 100, cy: 20, r: 13, fill: "#e9eef7", stroke: "#8f9bb3", "stroke-width": 3}, specchio);
+      el("circle", {cx: 100, cy: 20, r: 5, fill: "#9fdcff"}, specchio);
+      const fascia = el("rect", {x: 32, y: 44, width: 136, height: 16, fill: "#f4f7fb", "clip-path": clipTesta}, sopra);
+      el("rect", {x: 93, y: 50, width: 14, height: 4, fill: "#ff453a", "clip-path": clipTesta}, sopra);
+      el("rect", {x: 98, y: 45, width: 4, height: 14, fill: "#ff453a", "clip-path": clipTesta}, sopra);
+      return fascia;
+    }},
     amanuense: {occhi: "#f4c86a", disegna({dietro, el}) {              // piuma d'oca infilata in testa
       const piuma = el("g", {}, dietro);
       el("path", {d: "M116 48 Q100 18 70 0 Q108 6 124 44 Z", fill: "#f1d38a"}, piuma);

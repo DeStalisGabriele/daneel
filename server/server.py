@@ -61,7 +61,7 @@ finito il compito in corso; se la rimandi, diglielo in una riga e poi falla prim
 
 """
 
-EMOJI = {"daneel": "🤖", "calendario": "📅", "postino": "✉️", "nutrizionista": "🥗", "amanuense": "✍️", "coach": "🏋️"}
+EMOJI = {"daneel": "🤖", "calendario": "📅", "postino": "✉️", "nutrizionista": "🥗", "amanuense": "✍️", "coach": "🏋️", "medico": "🩺"}
 
 SISTEMA = """Stai parlando con Gabriele dall'app "Daneel" sul suo iPhone, non da Telegram.
 - Rispondi direttamente nel testo, in italiano, con Markdown semplice (grassetto, elenchi, link). Non usare il tool \
@@ -79,7 +79,7 @@ accanto a un risultato o a un elenco; mai una per riga e mai al posto delle paro
 # Il menu dell'app: "daneel" è l'automatico (Daneel decide da sé se e a chi delegare); scegliere un subagente non
 # apre un'altra chat: nella stessa conversazione Daneel affida a lui le richieste (NOTA_SUB in fondo al messaggio).
 # Redattore e Cacciatore di slide restano dentro /lezione.
-AGENTI = ("daneel", "calendario", "postino", "nutrizionista", "amanuense", "coach")
+AGENTI = ("daneel", "calendario", "postino", "nutrizionista", "amanuense", "coach", "medico")
 NOTA_SUB = ("\n\n[Dal menu dell'app Gabriele ha scelto il subagente `{0}`: affida a lui questa richiesta (strumento "
             "Agent/Task, subagent_type `{0}`) e riporta il suo risultato. Se la richiesta non c'entra con il suo ruolo, "
             "fai tu e diglielo in una riga.]")

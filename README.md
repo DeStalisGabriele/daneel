@@ -74,6 +74,9 @@ Tap a ring to see exactly how the number was calculated.
 
 **Sick days.** The Health tab has an *Illness* card: log one or more days with symptoms, fever, severity and a note (stored in the `malattia` collection, one document per day), and see that day's HRV, resting heart rate, sleep and steps next to your own average. Sick days are left out of the baselines, so an illness doesn't drag your "normal" down for weeks, and the Strain ring shows a rest day instead of a target. Just numbers: no diagnosis, no advice.
 
+### A health assistant that is not a doctor
+A `medico` subagent (also personal, not in the repo) follows symptoms and sick days: it reads the `malattia` collection, Apple Health numbers and the coach's notes, asks at most three questions, spots red-flag signs, says when to see a real doctor, and relies only on peer-reviewed science and clinical guidelines. No diagnoses, no prescriptions. It has its own mascot in the agent menu.
+
 ### Exam study planner
 For every exam, [`studio.py`](server/studio.py) works out when to start studying and how to split the time — again with no model call:
 - **Measures the course folder:** words and images of your notes file (projected to the end of the course, since it grows with every lecture), pages of exercise PDFs and past exam papers (counted once per date, even if you have several copies).
