@@ -167,17 +167,20 @@ html.plancia body > header, html.plancia #chat, html.plancia body > footer, html
 #invia svg { width: 18px; height: 18px; }
 #invia:disabled { background: var(--bordo); color: var(--tenue); }
 #invia.mic { background: transparent; color: var(--accento); }
-#invia.stop { background: #ff3b30; color: #fff; }
+#invia.stop { background: var(--mio); color: #fff; }
 /* Mentre registri un vocale il campo mostra il tempo al posto del testo */
 #reg { flex: 1; display: none; align-items: center; gap: 8px; height: 32px; color: var(--testo); font-variant-numeric: tabular-nums; }
 footer.registra #reg { display: flex; }
 footer.registra textarea { display: none; }
 footer.registra .allega, footer.registra #agenti { display: none; }
 #reg .punto { width: 10px; height: 10px; border-radius: 50%; background: #ff3b30; animation: b 1s infinite; }
-#reg .annulla { margin-left: auto; color: #ff3b30; font-size: 16px; padding: 0 8px; min-height: 32px; display: none; }
+#reg .annulla { color: #ff3b30; width: 32px; height: 32px; display: none; place-items: center; flex: none; }
+#reg .annulla svg { width: 22px; height: 22px; }
+#onda { flex: 1; min-width: 0; height: 28px; }
 #scorri { margin-left: auto; margin-right: 6px; color: var(--tenue); font-size: 15px; white-space: nowrap; transition: opacity .1s; }
 footer.bloccato #scorri { display: none; }
-footer.bloccato #reg .annulla { display: block; }
+footer.bloccato #reg .annulla { display: grid; order: -1; }
+footer.bloccato #reg .punto { order: -1; }
 /* Lucchetto sopra il 🎤 mentre tieni premuto: scorri in su fin lì per bloccare il vocale */
 #lucchetto { position: absolute; right: 10px; bottom: calc(100% + 10px); width: 40px; padding: 8px 0; display: none;
   flex-direction: column; align-items: center; gap: 2px; border-radius: 20px; background: var(--carta);
@@ -238,7 +241,7 @@ footer.registra:not(.bloccato) #lucchetto { display: flex; }
       <!-- Campo modificabile invece di una textarea: iOS non ci mette sopra la barra dei moduli (˄ ˅ ✓). -->
       <div id="testo" contenteditable="plaintext-only" role="textbox" aria-multiline="true" enterkeyhint="enter"
            autocapitalize="sentences" spellcheck="true" data-placeholder="Scrivi a Daneel…"></div>
-      <div id="reg"><span class="punto"></span><span id="regTempo">0:00</span><span id="scorri">‹ scorri per annullare</span><button class="annulla" id="annulla">Annulla</button></div>
+      <div id="reg"><span class="punto"></span><span id="regTempo">0:00</span><canvas id="onda" width="160" height="28"></canvas><span id="scorri">‹ scorri per annullare</span><button class="annulla" id="annulla" aria-label="Elimina il vocale"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg></button></div>
       <button id="invia" aria-label="Invia" disabled>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
       </button>
@@ -416,7 +419,7 @@ function aggiornaInvia() {
   const modo = reg ? (reg.bloccato ? "stop" : "rec") : (testo.value.trim() || foto.length) ? "su" : "mic";
   if (invia.dataset.modo !== modo) {
     invia.dataset.modo = modo; invia.className = modo === "su" ? "" : modo;
-    invia.innerHTML = {su: SVG_SU, mic: SVG_MIC, rec: SVG_MIC, stop: SVG_STOP}[modo];
+    invia.innerHTML = {su: SVG_SU, mic: SVG_MIC, rec: SVG_MIC, stop: SVG_SU}[modo];
     invia.setAttribute("aria-label", {su: "Invia", mic: "Tieni premuto per un vocale", rec: "Rilascia per inviare", stop: "Invia il vocale"}[modo]);
   }
   invia.disabled = false;   // anche mentre Daneel risponde: lo legge subito
@@ -581,13 +584,61 @@ var reg = null;   // {rec, pezzi, flusso, inizio, timer, est, bloccato} (var: se
 let dito = null;  // {x, y, id} mentre il dito è sul 🎤
 const ANNULLA_DX = 90, BLOCCA_DY = 70;   // px da scorrere
 
+// Il permesso del microfono su iOS vale per ogni avvio dell'app: si chiede una volta sola e il flusso si tiene
+// aperto (muto tra un vocale e l'altro), così non ricompare a ogni vocale.
+let flussoMic = null, audioCtx = null;
+async function prendiMicrofono() {
+  if (flussoMic && flussoMic.getAudioTracks().some(t => t.readyState === "live")) {
+    flussoMic.getAudioTracks().forEach(t => { t.enabled = true; }); return flussoMic;
+  }
+  flussoMic = await navigator.mediaDevices.getUserMedia({audio: true});
+  return flussoMic;
+}
+function silenziaMicrofono() { if (flussoMic) flussoMic.getAudioTracks().forEach(t => { t.enabled = false; }); }
+let analisi = null, rafOnda = 0, barre = [];
+function avviaOnda(flusso) {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume().catch(() => {});
+    const src = audioCtx.createMediaStreamSource(flusso), an = audioCtx.createAnalyser();
+    an.fftSize = 256; src.connect(an); analisi = {an, src, buf: new Uint8Array(an.fftSize)};
+  } catch (e) { analisi = null; }
+  barre = []; let ultimo = 0;
+  const c = $("#onda"), g = c.getContext("2d"), N = 40;
+  const disegna = t => {
+    if (!reg) return;
+    if (t - ultimo > 70) {   // una barra nuova ogni 70 ms, scorre verso sinistra come su WhatsApp
+      ultimo = t; let v = 0.06;
+      if (analisi) {
+        analisi.an.getByteTimeDomainData(analisi.buf);
+        let m = 0; for (const x of analisi.buf) m = Math.max(m, Math.abs(x - 128));
+        v = Math.max(0.06, Math.min(1, m / 70));
+      }
+      barre.push(v); if (barre.length > N) barre.shift();
+    }
+    g.clearRect(0, 0, c.width, c.height);
+    g.fillStyle = getComputedStyle(document.body).color || "#888";
+    const w = c.width / N;
+    barre.forEach((v, i) => {
+      const h = Math.max(3, v * c.height), x = c.width - (barre.length - i) * w;
+      g.beginPath(); if (g.roundRect) g.roundRect(x + 1, (c.height - h) / 2, w - 3, h, 2); else g.rect(x + 1, (c.height - h) / 2, w - 3, h); g.fill();
+    });
+    rafOnda = requestAnimationFrame(disegna);
+  };
+  cancelAnimationFrame(rafOnda); rafOnda = requestAnimationFrame(disegna);
+}
+function fermaOnda() {
+  cancelAnimationFrame(rafOnda);
+  if (analisi) { try { analisi.src.disconnect(); } catch (e) {} analisi = null; }
+}
+
 async function registra() {
   if (reg) return;
   let flusso;
-  try { flusso = await navigator.mediaDevices.getUserMedia({audio: true}); }
+  try { flusso = await prendiMicrofono(); }
   catch (e) { avviso("Per i vocali serve il permesso del microfono: Impostazioni → Daneel (o Safari) → Microfono."); return; }
   if (!dito) {   // il dito si è alzato mentre iOS chiedeva il permesso: non si registra niente
-    flusso.getTracks().forEach(t => t.stop());
+    silenziaMicrofono();
     avviso("Tieni premuto 🎤 per registrare, rilascia per inviare."); return;
   }
   const tipo = ["audio/mp4", "audio/webm;codecs=opus", "audio/webm"].find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || "";
@@ -603,13 +654,13 @@ async function registra() {
     $("#regTempo").textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
     if (s >= 180) fermaRegistrazione(true);   // massimo 3 minuti
   };
-  tick(); reg.timer = setInterval(tick, 250);
+  tick(); reg.timer = setInterval(tick, 250); avviaOnda(flusso);
 }
 function fermaRegistrazione(invia) {
   if (!reg) return;
-  const r = reg; reg = null; clearInterval(r.timer);
+  const r = reg; reg = null; clearInterval(r.timer); fermaOnda();
   r.rec.onstop = () => {
-    r.flusso.getTracks().forEach(t => t.stop());
+    silenziaMicrofono();
     const blob = new Blob(r.pezzi, {type: r.rec.mimeType || "audio/mp4"});
     if (invia && blob.size > 2000 && Date.now() - r.inizio > 700) manda({blob, est: r.est});
     else if (invia) avviso("Vocale troppo corto: tieni premuto 🎤 mentre parli.");
