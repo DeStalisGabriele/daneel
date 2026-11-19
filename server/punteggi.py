@@ -12,7 +12,10 @@ solo conti, sempre rispetto alla media personale di Gabriele (vedi la pagina "Pu
   standard minima di 0,5 respiri/min e 0,15 °C, così un valore quasi costante non fa scattare allarmi); se sono più
   basse non cambia nulla. La SpO2 non entra nel punteggio (il Watch la stima a riposo, è rumorosa): conta solo nei
   "segnali". Pesi e soglie scelti da noi, non validati; l'idea (respiro, temperatura e SpO2 come spie di malattia o
-  di fatica) è quella degli indicatori di salute di Whoop e Oura.
+  di fatica) ha un'evidenza debole: nell'unico studio prospettico trovato (COVI-GAPP, 2022, PubMed 35728900:
+  braccialetto Ava, solo COVID-19, analisi ad interim) respirazione e temperatura del polso cambiano prima dei sintomi;
+  per l'Apple Watch queste due misure non risultano ancora validate (revisione sistematica "The accuracy of Apple Watch
+  measurements", npj Digital Medicine 2025, doi 10.1038/s41746-025-02238-1).
 - Segnali: quante tra HRV bassa, FC a riposo alta, respirazione alta, temperatura alta e SpO2 bassa sono oltre 2
   deviazioni standard dalla propria media; da 3 in su la scheda avvisa che qualcosa non va (spesso una malattia in arrivo).
 - Sforzo: passi (pieni a 10.000) o calorie attive (piene a 600) fino a 35 punti, pesi fino a 45 (pieni a 90 minuti

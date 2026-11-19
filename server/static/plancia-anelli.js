@@ -115,7 +115,7 @@
     if (m) dett.innerHTML = dettagli(m, valore(m, g).g);
     const sg = (g.dettagli && g.dettagli.segnali) || [];
     document.getElementById("anelliNota").textContent = sg.length >= 3
-      ? "Attenzione: " + sg.length + " segnali fuori dalla tua norma (" + sg.join(", ") + "). Può essere una malattia in arrivo: riposa e, se serve, segnala la malattia qui sotto. Sono conti nostri, non una diagnosi."
+      ? "Attenzione: " + sg.length + " segnali fuori dalla tua norma (" + sg.join(", ") + "). Può essere una malattia in arrivo, ma l'evidenza è debole (solo studi su altri dispositivi e sul COVID-19): sono conti nostri, non una diagnosi."
       : g.provvisorio
       ? "Provvisori: diventano affidabili con almeno 14 giorni di dati. Tocca un anello per il calcolo."
       : "Rispetto alla tua media degli ultimi 30 giorni (i giorni di malattia non contano). Tocca un anello per il calcolo.";

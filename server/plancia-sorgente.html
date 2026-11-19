@@ -893,9 +893,9 @@ function pesoInfo(last){
   return {d: diff===0 ? "Stabile negli ultimi 30 giorni" : (diff>0?"+":"")+fmtNum(diff,1)+" kg in 30 giorni", c:""};
 }
 const NOTE_METRICA = {peso:"Pesate a mano in Salute", vo2max:"Conta il trend: il Watch lo sottostima di circa 6",
-  frequenza_respiratoria:"Media della notte, respiri al minuto. Sale con malattia e fatica: conta lo scarto dalla tua media",
+  frequenza_respiratoria:"Media della notte, respiri al minuto: conta lo scarto dalla tua media. Il Watch non è ancora validato per questa misura (revisione 2025)",
   spo2:"Media della notte (Apple Watch): conta il trend, non il singolo valore",
-  temperatura_polso:"Media della notte: conta lo scarto dalla tua media, non il valore. Sale con febbre e malanni"};
+  temperatura_polso:"Media della notte: conta lo scarto dalla tua media, non il valore. Il Watch non è ancora validato per questa misura (revisione 2025)"};
 function renderHealth(){
   const k=sel, nDays=Object.keys(health).length, tiles=[];
   const ri=readinessInfo(k), r=ri&&ri.score, base=stats(baseline(addDays(k,1),"hrv"));
