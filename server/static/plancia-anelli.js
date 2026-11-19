@@ -81,6 +81,15 @@
     if (m.id === "recupero") righe = [["HRV", fmt(d.hrv) + " ms"], ["Rispetto alla tua media (z)", fmt(d.zHrv, 2)],
       ["FC a riposo", fmt(d.fcRiposo) + " bpm"], ["Rispetto alla tua media (z)", fmt(d.zFc, 2)],
       ["Sonno di stanotte", fmt(g.sonno)], ["Giorni di base (servono 14)", fmt(d.giorniDiBase)]];
+    if (m.id === "recupero") {
+      // respirazione e temperatura contano solo se sono più alte della media (fino a −5 punti ciascuna); la SpO2 no
+      const pen = (z) => z != null && z > 0 ? "−" + fmt(Math.min(3, z) * 5, 1) + " punti" : z != null ? "nessuna penalità" : "";
+      if (d.respirazione != null) righe.push(["Respirazione", fmt(d.respirazione, 1) + " /min" + (d.respMedia != null ? " (media " + fmt(d.respMedia, 1) + ")" : "")], ["Rispetto alla tua media (z)", d.zResp != null ? fmt(d.zResp, 2) + " · " + pen(d.zResp) : "media ancora corta"]);
+      if (d.tempPolso != null) righe.push(["Temperatura del polso", fmt(d.tempPolso, 1) + " °C" + (d.tempMedia != null ? " (media " + fmt(d.tempMedia, 1) + ")" : "")], ["Rispetto alla tua media (z)", d.zTemp != null ? fmt(d.zTemp, 2) + " · " + pen(d.zTemp) : "media ancora corta"]);
+      if (d.spo2 != null) righe.push(["SpO2 (non entra nel punteggio)", fmt(d.spo2, 1) + " %" + (d.spo2Media != null ? " (media " + fmt(d.spo2Media, 1) + ")" : "")]);
+      const sg = d.segnali || [];
+      righe.push(["Segnali fuori norma", sg.length ? sg.length + ": " + sg.join(", ") : "nessuno"]);
+    }
     if (m.id === "recupero" && g.malattia) righe.push(["Malattia", [...(g.malattia.sintomi || []), g.malattia.febbre ? "febbre " + fmt(g.malattia.febbre, 1) + " °C" : ""].filter(Boolean).join(", ") || "segnata"],
       ["HRV / FC: tua media (senza i giorni di malattia)", fmt(d.hrvMedia) + " ms / " + fmt(d.fcMedia) + " bpm"]);
     if (m.id === "sforzo") righe = [["Passi", fmt(d.passi)], ["Calorie attive", d.kcalAttive ? fmt(d.kcalAttive) + " kcal" : "—"],
@@ -104,7 +113,10 @@
     const m = METRICHE.find((x) => x.id === scelta);
     dett.hidden = !m;
     if (m) dett.innerHTML = dettagli(m, valore(m, g).g);
-    document.getElementById("anelliNota").textContent = g.provvisorio
+    const sg = (g.dettagli && g.dettagli.segnali) || [];
+    document.getElementById("anelliNota").textContent = sg.length >= 3
+      ? "Attenzione: " + sg.length + " segnali fuori dalla tua norma (" + sg.join(", ") + "). Può essere una malattia in arrivo: riposa e, se serve, segnala la malattia qui sotto. Sono conti nostri, non una diagnosi."
+      : g.provvisorio
       ? "Provvisori: diventano affidabili con almeno 14 giorni di dati. Tocca un anello per il calcolo."
       : "Rispetto alla tua media degli ultimi 30 giorni (i giorni di malattia non contano). Tocca un anello per il calcolo.";
   }

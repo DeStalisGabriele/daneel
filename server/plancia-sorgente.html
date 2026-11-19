@@ -692,7 +692,7 @@ function tileEl(x, cat){
   const el=document.createElement("div"); el.className="tile";
   if(cat) el.style.setProperty("--tint","var(--"+cat+")");
   el.innerHTML='<span class="eyebrow"></span><span class="v"><span class="num"></span><span class="unit"></span></span><span class="d"></span>';
-  const m=String(x.v).match(/^(.*?\d)\s?(kcal|kg|ms|bpm|gg|sett\.|h|g|%|€)$/);
+  const m=String(x.v).match(/^(.*?\d)\s?(kcal|kg|ms|bpm|gg|sett\.|h|g|%|€|°C|\/min)$/);
   el.querySelector(".num").textContent = m ? m[1] : x.v;
   el.querySelector(".unit").textContent = m ? m[2] : "";
   el.children[0].textContent=x.l; el.children[2].textContent=x.d; if(x.c) el.children[2].classList.add(x.c);
@@ -857,12 +857,14 @@ function renderReadChart(){
     box.appendChild(p); }
 }
 function latestHealth(f, upTo){ for(let i=0;i<60;i++){ const k=addDays(upTo,-i); const x=metric(k,f); if(x!=null && (f!=="sonno"||health[k])) return {k,x}; } return null; }
+// scarto minimo dalla media per colorare un riquadro (default: 5% della media)
+const SOGLIA = {fc_riposo:2, frequenza_respiratoria:1, spo2:1, temperatura_polso:.3};
 function vsMean(k,f,x,unit,higherIsBetter){
   const v=[]; for(let i=1;i<=30;i++){ const y=metric(addDays(k,-i),f); if(y!=null) v.push(y); }
   if(v.length<3) return {d:"la media arriva dopo qualche giorno", c:""};
   const m=v.reduce((a,b)=>a+b,0)/v.length, diff=x-m, r=Math.round(diff*10)/10;
-  const c = Math.abs(diff) < (f==="fc_riposo"?2:m*.05) ? "" : ((diff>0)===higherIsBetter ? "good" : "bad");
-  return {d:(r>0?"+":"")+r+" "+unit+" sulla media ("+(Math.round(m*10)/10)+")", c};
+  const c = Math.abs(diff) < (SOGLIA[f]??m*.05) ? "" : ((diff>0)===higherIsBetter ? "good" : "bad");
+  return {d:(r>0?"+":"")+r.toLocaleString("it-IT")+" "+unit+" sulla media ("+(Math.round(m*10)/10).toLocaleString("it-IT")+")", c};
 }
 function lineChart(id, f, fmt){
   const t=todayKey(), N=30, W=420, H=140, L=36, R=10, T=10, B=22;
@@ -890,6 +892,10 @@ function pesoInfo(last){
   const diff=Math.round((last.x-first)*10)/10;
   return {d: diff===0 ? "Stabile negli ultimi 30 giorni" : (diff>0?"+":"")+fmtNum(diff,1)+" kg in 30 giorni", c:""};
 }
+const NOTE_METRICA = {peso:"Pesate a mano in Salute", vo2max:"Conta il trend: il Watch lo sottostima di circa 6",
+  frequenza_respiratoria:"Media della notte, respiri al minuto. Sale con malattia e fatica: conta lo scarto dalla tua media",
+  spo2:"Media della notte (Apple Watch): conta il trend, non il singolo valore",
+  temperatura_polso:"Media della notte: conta lo scarto dalla tua media, non il valore. Sale con febbre e malanni"};
 function renderHealth(){
   const k=sel, nDays=Object.keys(health).length, tiles=[];
   const ri=readinessInfo(k), r=ri&&ri.score, base=stats(baseline(addDays(k,1),"hrv"));
@@ -901,21 +907,23 @@ function renderHealth(){
   if(sl&&sl.ore) tiles.push({l:"Sonno stanotte", v:sl.ore.toFixed(1)+" h", c: sl.ore>=7?"good":"bad",
     d:"profondo "+(sl.profondo||0).toFixed(1)+" h · REM "+(sl.rem||0).toFixed(1)+" h"+(sl.inizio?" · "+hhmm(sl.inizio)+"-"+hhmm(sl.fine):""), open:sleepOpen});
   else tiles.push({l:"Sonno stanotte", v:"—", d:"Serve l'Apple Watch durante la notte", open:sleepOpen});
-  const defs=[["hrv","HRV","ms",true,0],["fc_riposo","FC a riposo","bpm",false,0],["passi","Passi","",true,0],["vo2max","VO2 max","",true,1],["peso","Peso","kg",false,1]];
+  const defs=[["hrv","HRV","ms",true,0],["fc_riposo","FC a riposo","bpm",false,0],["passi","Passi","",true,0],["vo2max","VO2 max","",true,1],["peso","Peso","kg",false,1],
+    ["frequenza_respiratoria","Respirazione","/min",false,1],["spo2","SpO2","%",true,1],["temperatura_polso","Temp. polso","°C",false,1]];
   for(const [f,l,unit,better,dec] of defs){
     const last=latestHealth(f,k);
     const open={title:l, unit: f==="passi"?"passi":unit, dec, chart: f==="passi"?"bar":"line", goal: f==="passi"?8000:undefined,
-      note: f==="peso"?"Pesate a mano in Salute":f==="vo2max"?"Conta il trend: il Watch lo sottostima di circa 6":"", get:kk=>metric(kk,f)};
+      note: NOTE_METRICA[f]||"", get:kk=>metric(kk,f)};
     if(!last){ tiles.push({l, v:"—", d:"Nessun dato", open}); continue; }
     let v=last.x.toLocaleString("it-IT",{maximumFractionDigits:dec})+(unit&&f!=="passi"?" "+unit:"");
     let info = f==="passi" ? {d: last.x>=8000?"Obiettivo 8.000 raggiunto":"Obiettivo 8.000 · "+(8000-Math.round(last.x)).toLocaleString("it-IT")+" mancanti", c: last.x>=8000?"good":""}
       : f==="vo2max" ? {d:"Conta il trend: il Watch lo sottostima di circa 6", c:""}
+      : f==="spo2" ? vsMean(last.k,f,last.x,"punti",true)
       : f==="peso" ? pesoInfo(last)
       : vsMean(last.k,f,last.x,unit,better);
     if(last.k!==k) info={d:"Ultimo valore: "+fmtDate(last.k).replace(/^\S+ /,""), c:""};
     tiles.push({l, v, d:info.d, c:info.c, open});
   }
-  const cats=["green","cyan","pink","pink","orange","pink","purple"];   // Prontezza, Sonno, HRV, FC, Passi, VO2 max, Peso
+  const cats=["green","cyan","pink","pink","orange","pink","purple","cyan","blue","orange"];   // Prontezza, Sonno, HRV, FC, Passi, VO2 max, Peso, Respirazione, SpO2, Temp. polso
   const box=document.getElementById("healthTiles"); box.textContent="";
   tiles.forEach((x,i)=>box.appendChild(tileEl(x, cats[i])));
   renderReadChart(); renderReadDetail();

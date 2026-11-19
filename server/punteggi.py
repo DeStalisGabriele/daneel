@@ -7,6 +7,14 @@ solo conti, sempre rispetto alla media personale di Gabriele (vedi la pagina "Pu
   97%) per il 5%; regolarità dell'ora in cui ci si addormenta (scarto dalla media di 14 notti) per il 15%.
 - Recupero: 60 + 16·z(ln HRV) − 11·z(FC a riposo) + 0,2·(Sonno − 70), con z rispetto ai 30 giorni prima; senza
   almeno 5 giorni di base il punteggio è "provvisorio".
+- Respirazione, temperatura del polso e SpO2 (dal 2026-11-19, medie della notte dall'Apple Watch): respirazione e
+  temperatura più alte della propria media tolgono fino a 5 punti ciascuna al Recupero (z limitato a 3, e deviazione
+  standard minima di 0,5 respiri/min e 0,15 °C, così un valore quasi costante non fa scattare allarmi); se sono più
+  basse non cambia nulla. La SpO2 non entra nel punteggio (il Watch la stima a riposo, è rumorosa): conta solo nei
+  "segnali". Pesi e soglie scelti da noi, non validati; l'idea (respiro, temperatura e SpO2 come spie di malattia o
+  di fatica) è quella degli indicatori di salute di Whoop e Oura.
+- Segnali: quante tra HRV bassa, FC a riposo alta, respirazione alta, temperatura alta e SpO2 bassa sono oltre 2
+  deviazioni standard dalla propria media; da 3 in su la scheda avvisa che qualcosa non va (spesso una malattia in arrivo).
 - Sforzo: passi (pieni a 10.000) o calorie attive (piene a 600) fino a 35 punti, pesi fino a 45 (pieni a 90 minuti
   su Hevy), Muay Thai 45; massimo 100. L'obiettivo del giorno sale con il recupero.
 - Malattia (collezione `malattia`, un documento per giorno: sintomi, febbre, gravità, note; dal 2026-11-10): i giorni
@@ -70,11 +78,11 @@ def _tra(v, lo, hi):
     return max(lo, min(hi, v))
 
 
-def _z(v, storico):
+def _z(v, storico, sd_min=0.0):
     s = [x for x in storico if x is not None]
     if v is None or len(s) < 5:
         return None
-    sd = pstdev(s) or 1e-9
+    sd = max(pstdev(s), sd_min) or 1e-9
     return (v - mean(s)) / sd
 
 
@@ -143,10 +151,25 @@ def calcola(giorni: int = 30) -> list[dict]:
         zh = _z(math.log(hrv), [math.log(x) for x in storia_hrv]) if hrv else None
         zf = _z(fc, storia_fc) if fc else None
         base_giorni = len(storia_hrv)
+
+        # Respirazione, temperatura del polso e SpO2 (medie della notte): z sulla propria media dei 30 giorni prima
+        def storia(campo):
+            return [x for x in (_num(salute.get(p, {}).get(campo)) for p in base_ok) if x]
+        resp, temp, spo2 = _num(s.get("frequenza_respiratoria")), _num(s.get("temperatura_polso")), _num(s.get("spo2"))
+        st_resp, st_temp, st_spo2 = storia("frequenza_respiratoria"), storia("temperatura_polso"), storia("spo2")
+        zr = _z(resp, st_resp, 0.5) if resp else None
+        zt = _z(temp, st_temp, 0.15) if temp else None
+        zs = _z(spo2, st_spo2, 0.7) if spo2 else None
         recupero = None
         if zh is not None or zf is not None:
             v = 60 + 16 * (zh or 0) - 11 * (zf or 0) + (0.2 * (sonno - 70) if sonno is not None else 0)
+            v -= 5 * min(3, max(0, zr or 0)) + 5 * min(3, max(0, zt or 0))      # solo se più alte della media
             recupero = round(_tra(v, 1, 100))
+
+        # Segnali: oltre 2 deviazioni standard dalla propria media, nella direzione "sbagliata"
+        segnali = [nome for nome, fuori in (("HRV bassa", zh is not None and zh <= -2), ("FC a riposo alta", zf is not None and zf >= 2),
+                                            ("respirazione alta", zr is not None and zr >= 2), ("temperatura del polso alta", zt is not None and zt >= 2),
+                                            ("SpO2 bassa", zs is not None and zs <= -2)) if fuori]
 
         # --- Sforzo
         passi, kcal = _num(s.get("passi")), _num(s.get("kcal attive") or s.get("kcal_attive"))
@@ -170,6 +193,12 @@ def calcola(giorni: int = 30) -> list[dict]:
                     "provvisorio": base_giorni < 14, "malattia": malattia, "dettagli": {
                         "sonno": dett_sonno, "hrv": hrv, "fcRiposo": fc, "zHrv": round(zh, 2) if zh is not None else None,
                         "zFc": round(zf, 2) if zf is not None else None, "giorniDiBase": base_giorni,
+                        "respirazione": resp, "zResp": round(zr, 2) if zr is not None else None,
+                        "respMedia": round(mean(st_resp), 1) if st_resp else None,
+                        "tempPolso": temp, "zTemp": round(zt, 2) if zt is not None else None,
+                        "tempMedia": round(mean(st_temp), 2) if st_temp else None,
+                        "spo2": spo2, "spo2Media": round(mean(st_spo2), 1) if st_spo2 else None,
+                        "zSpo2": round(zs, 2) if zs is not None else None, "segnali": segnali,
                         "hrvMedia": round(math.exp(mean(math.log(x) for x in storia_hrv)), 1) if storia_hrv else None,
                         "fcMedia": round(mean(storia_fc), 1) if storia_fc else None,
                         "passi": passi, "kcalAttive": kcal, "minutiPesi": pesi_per_giorno.get(k), "muaythai": bool(mt)}})

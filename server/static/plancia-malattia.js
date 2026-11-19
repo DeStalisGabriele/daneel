@@ -22,6 +22,9 @@
   .mal-btn.rosso{background:none;color:var(--red);font-weight:600}
   .mal-btn:disabled{opacity:.5}
   .mal-ora{border-radius:12px;padding:10px 12px;background:color-mix(in srgb,var(--red) 14%,transparent);font-size:var(--t-sub);line-height:1.35}
+  .mal-chiuso{all:unset;box-sizing:border-box;width:100%;display:flex;justify-content:space-between;align-items:center;gap:10px;cursor:pointer;font-size:var(--t-sub);font-weight:600;color:var(--ink)}
+  .mal-chiuso b{display:flex;align-items:center;gap:6px;font-weight:600}
+  .mal-chiuso span{color:var(--muted);font-size:20px}
   .mal-vuoto,.mal-nota{font-size:var(--t-cap);color:var(--muted);margin:0;line-height:1.35}
   .mal-ep{background:var(--fill);border-radius:14px;padding:4px 14px}
   .mal-ep summary{cursor:pointer;padding:10px 0;display:grid;gap:4px;list-style:none}
@@ -32,10 +35,12 @@
   .mal-chips i{font-style:normal;font-size:var(--t-foot);padding:3px 9px;border-radius:999px;background:var(--surface);color:var(--ink)}
   .mal-chips i.f{background:color-mix(in srgb,var(--red) 18%,var(--surface))}
   .mal-dati{display:grid;gap:8px;padding:2px 0 12px}
-  .mal-tab{width:100%;border-collapse:collapse;font-size:var(--t-foot);font-variant-numeric:tabular-nums}
-  .mal-tab th{font-weight:600;color:var(--muted);text-align:right;padding:3px 0 5px 8px}
+  .mal-scorri{max-width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .mal-tab{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
+  .mal-tab th{font-weight:600;color:var(--muted);text-align:right;padding:3px 0 5px 5px}
+  .mal-tab th small{display:block;font-weight:400;font-size:var(--t-cap)}
   .mal-tab th:first-child,.mal-tab td:first-child{text-align:left;padding-left:0}
-  .mal-tab td{padding:5px 0 5px 8px;text-align:right;border-top:.5px solid var(--sep);white-space:nowrap}
+  .mal-tab td{padding:5px 0 5px 5px;text-align:right;border-top:.5px solid var(--sep);white-space:nowrap}
   .mal-tab td small{display:block;color:var(--muted);font-size:var(--t-cap)}
   .mal-tab tr.media td{color:var(--muted)}
   .mal-giu{color:var(--red)} .mal-su{color:var(--orange)}
@@ -62,7 +67,7 @@
   const anelli = sezione.querySelector(".card.anelli");
   anelli ? anelli.after(card) : (sezione.querySelector(":scope > .sec-head") ? sezione.querySelector(":scope > .sec-head").after(card) : sezione.prepend(card));
 
-  let giorni = [], punteggi = {}, db = null, form = null, errore = "";
+  let giorni = [], punteggi = {}, db = null, form = null, errore = "", aperta = false;
   const ISO = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
   const oggi = () => ISO(new Date());
   const piu = (k, n) => { const d = new Date(k + "T12:00:00"); d.setDate(d.getDate() + n); return ISO(d); };
@@ -87,29 +92,31 @@
     return {sint, feb, gr};
   }
 
-  function differenza(v, media, unita, inverso) {
+  function differenza(v, media, unita, inverso, soglia) {
     if (v == null || media == null) return "";
     const d = v - media, perc = media ? Math.round(d / media * 100) : 0;
-    if (Math.abs(perc) < 3) return "";
+    if (soglia != null ? Math.abs(d) < soglia : Math.abs(perc) < 3) return "";
     const brutto = inverso ? d > 0 : d < 0;
-    return `<small class="${brutto ? (inverso ? "mal-su" : "mal-giu") : ""}">${d > 0 ? "+" : "−"}${fmt(Math.abs(unita === "%" ? perc : d))}${unita === "%" ? "%" : " " + unita}</small>`;
+    return `<small class="${brutto ? (inverso ? "mal-su" : "mal-giu") : ""}">${d > 0 ? "+" : "−"}${fmt(Math.abs(unita === "%" ? perc : d), unita === "" ? 1 : 0)}${unita === "%" ? "%" : unita && unita !== "bpm" ? " " + unita : ""}</small>`;
   }
 
   function tabella(ep) {
     const righe = ep.giorni.map((g) => {
       const p = punteggi[g.id], d = p && p.dettagli;
-      if (!d) return `<tr><td>${breve(g.id)}</td><td colspan="4">dati non ancora arrivati</td></tr>`;
+      if (!d) return `<tr><td>${breve(g.id)}</td><td colspan="6">dati non ancora arrivati</td></tr>`;
       const ore = d.sonno && d.sonno.ore;
       return `<tr><td>${breve(g.id)}</td>
-        <td>${d.hrv != null ? fmt(d.hrv) + " ms" : "—"}${differenza(d.hrv, d.hrvMedia, "%", false)}</td>
-        <td>${d.fcRiposo != null ? fmt(d.fcRiposo) + " bpm" : "—"}${differenza(d.fcRiposo, d.fcMedia, "bpm", true)}</td>
-        <td>${ore != null ? fmt(ore, 1) + " h" : "—"}</td>
+        <td>${d.hrv != null ? fmt(d.hrv) : "—"}${differenza(d.hrv, d.hrvMedia, "%", false)}</td>
+        <td>${d.fcRiposo != null ? fmt(d.fcRiposo) : "—"}${differenza(d.fcRiposo, d.fcMedia, "bpm", true)}</td>
+        <td>${d.respirazione != null ? fmt(d.respirazione, 1) : "—"}${differenza(d.respirazione, d.respMedia, "", true, 1)}</td>
+        <td>${d.tempPolso != null ? fmt(d.tempPolso, 1) : "—"}${differenza(d.tempPolso, d.tempMedia, "", true, 0.3)}</td>
+        <td>${ore != null ? fmt(ore, 1) : "—"}</td>
         <td>${d.passi != null ? fmt(d.passi) : "—"}</td></tr>`;
     });
     // la tua media: dall'ultimo giorno dell'episodio con dati
     const ult = [...ep.giorni].reverse().map((g) => punteggi[g.id] && punteggi[g.id].dettagli).find((d) => d && (d.hrvMedia != null || d.fcMedia != null));
-    const media = ult ? `<tr class="media"><td>Tua media</td><td>${ult.hrvMedia != null ? fmt(ult.hrvMedia) + " ms" : "—"}</td><td>${ult.fcMedia != null ? fmt(ult.fcMedia) + " bpm" : "—"}</td><td></td><td></td></tr>` : "";
-    return `<table class="mal-tab"><thead><tr><th>Giorno</th><th>HRV</th><th>FC</th><th>Sonno</th><th>Passi</th></tr></thead><tbody>${righe.join("")}${media}</tbody></table>`;
+    const media = ult ? `<tr class="media"><td>Media</td><td>${ult.hrvMedia != null ? fmt(ult.hrvMedia) : "—"}</td><td>${ult.fcMedia != null ? fmt(ult.fcMedia) : "—"}</td><td>${ult.respMedia != null ? fmt(ult.respMedia, 1) : ""}</td><td>${ult.tempMedia != null ? fmt(ult.tempMedia, 1) : ""}</td><td></td><td></td></tr>` : "";
+    return `<div class="mal-scorri"><table class="mal-tab"><thead><tr><th>Giorno</th><th>HRV<small>ms</small></th><th>FC<small>bpm</small></th><th>Resp.<small>/min</small></th><th>Temp.<small>°C</small></th><th>Sonno<small>ore</small></th><th>Passi</th></tr></thead><tbody>${righe.join("")}${media}</tbody></table></div>`;
   }
 
   function dettaglioGiorni(ep) {
@@ -145,6 +152,15 @@
   function disegna() {
     const eps = episodi(), k = oggi(), ieri = piu(k, -1);
     const inCorso = giorni.some((g) => g.id === k) ? k : (giorni.some((g) => g.id === ieri) ? ieri : null);
+    // Malattia finita (2026-11-18): la scheda scende in fondo alla Salute e resta chiusa, con solo il titolo del periodo.
+    const finita = !inCorso && !form && eps.length > 0;
+    if (inCorso) aperta = false;
+    if (finita) sezione.append(card); else if (anelli) anelli.after(card);
+    if (finita && !aperta) {
+      const u = eps[0], n = u.giorni.length;
+      card.innerHTML = `<button type="button" class="mal-chiuso" id="malApri" aria-expanded="false"><b>${IC("thermo", 18)} Malattia · ${n === 1 ? breve(u.inizio) : "dal " + breve(u.inizio) + " al " + breve(u.fine)}</b><span aria-hidden="true">›</span></button>`;
+      return collega();
+    }
     let html = `<div class="mal-testa"><b>${IC("thermo", 18)} Malattia</b>${form ? "" : `<button class="mal-btn" type="button" id="malNuova">${IC("plus", 16)} Segna</button>`}</div>`;
     if (inCorso && !form) {
       const ep = eps.find((e) => e.fine === inCorso), n = ep.giorni.length;
@@ -161,8 +177,9 @@
           <div class="mal-chips">${feb ? `<i class="f">Febbre ${fmt(feb, 1)} °C</i>` : ""}${sint.filter((s) => !(feb && s === "Febbre")).map((s) => `<i>${esc(s)}</i>`).join("") || (feb ? "" : '<i>Nessun sintomo indicato</i>')}</div>
           </summary><div class="mal-dati">${tabella(ep)}${dettaglioGiorni(ep)}</div></details>`;
       }).join("");
-      html += `<p class="mal-nota">Le medie di HRV, FC a riposo e sonno sono calcolate sui 30 giorni prima, senza i giorni di malattia. Il giorno di malattia lo Sforzo non ha obiettivo. Sono conti nostri, non una valutazione medica.</p>`;
+      html += `<p class="mal-nota">Le medie di HRV, FC a riposo, respirazione, temperatura del polso e sonno sono calcolate sui 30 giorni prima, senza i giorni di malattia. Il giorno di malattia lo Sforzo non ha obiettivo. Sono conti nostri, non una valutazione medica.</p>`;
     }
+    if (finita && aperta) html += `<button class="mal-btn sec" type="button" id="malChiudi">Chiudi</button>`;
     card.innerHTML = html;
     collega();
   }
@@ -170,6 +187,8 @@
   function apri(f) { errore = ""; form = f; disegna(); }
   function collega() {
     const q = (id) => card.querySelector(id);
+    if (q("#malApri")) q("#malApri").onclick = () => { aperta = true; disegna(); };
+    if (q("#malChiudi")) q("#malChiudi").onclick = () => { aperta = false; disegna(); };
     if (q("#malNuova")) q("#malNuova").onclick = () => apri({data: oggi(), n: 1, sintomi: [], febbre: "", gravita: 0, note: "", modifica: false});
     card.querySelectorAll("[data-mod]").forEach((b) => b.onclick = () => {
       const g = giorni.find((x) => x.id === b.dataset.mod); if (!g) return;

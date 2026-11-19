@@ -84,8 +84,11 @@ def main():
             foto(nome)
 
         # 16 · Salute: la card Malattia (tre giorni inventati, con i dati di salute accanto alla media)
-        vai("salute")
-        frame().evaluate("() => document.querySelector('.card.mal').scrollIntoView({block: 'start'}); window.scrollBy(0, -72)")
+        vai("salute", 3000)
+        frame().wait_for_selector(".card.mal")
+        frame().evaluate("() => { const b = document.getElementById('malApri'); if (b) b.click(); }")   # a malattia finita la card è chiusa
+        pg.wait_for_timeout(700)
+        frame().evaluate("() => window.scrollTo(0, document.querySelector('.card.mal').getBoundingClientRect().top + window.scrollY - 72)")
         pg.wait_for_timeout(900)
         foto("16-malattia.png")
 

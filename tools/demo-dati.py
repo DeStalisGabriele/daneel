@@ -60,6 +60,8 @@ MENU = {
 }
 # giorni fa → (HRV, FC a riposo): tutto inventato
 MALATO = {6: (51.0, 63), 5: (43.0, 68), 4: (49.0, 64)}
+# giorni fa → (respirazione, temperatura del polso): più alte del solito nei giorni di malattia
+MALATO_VITALI = {6: (16.4, 36.6), 5: (17.8, 37.1), 4: (17.0, 36.8)}
 SINTOMI_DEMO = {6: ["Mal di gola", "Stanchezza"], 5: ["Febbre", "Mal di gola", "Tosse", "Dolori muscolari"], 4: ["Tosse", "Raffreddore"]}
 FEBBRE_DEMO = {5: 38.1}
 NOTE_DEMO = {5: "Giornata a letto, tanta acqua."}
@@ -75,7 +77,8 @@ for i in range(GIORNI, -1, -1):
     s = {"data": k(d), "hrv": round(random.gauss(62, 7), 1), "fc_riposo": round(random.gauss(57, 2.5)), "vo2max": 46.2,
          "sonno": {"ore": ore, "profondo": round(ore * random.uniform(.12, .2), 2), "rem": round(ore * random.uniform(.18, .26), 2),
                    "sveglio": round(random.uniform(.05, .3), 2), "inizio": fmt(inizio), "fine": fmt(fine)},
-         "aggiornato": fmt(fine)}
+         "frequenza_respiratoria": round(random.gauss(15.2, .4), 1), "spo2": round(random.gauss(96.8, .6), 1),
+         "temperatura_polso": round(random.gauss(36.2, .12), 2), "aggiornato": fmt(fine)}
     if i > 0:  # i passi e le calorie attive di oggi arrivano domani
         s["passi"] = random.randint(6200, 12800)
         s["kcal attive"] = random.randint(320, 780)
@@ -84,6 +87,7 @@ for i in range(GIORNI, -1, -1):
         s["peso"] = peso
     if i in MALATO:  # tre giorni di raffreddore con febbre (inventati): HRV in calo, FC a riposo in salita, meno passi
         s["hrv"], s["fc_riposo"] = MALATO[i]
+        s["frequenza_respiratoria"], s["temperatura_polso"] = MALATO_VITALI[i]
         if "passi" in s:
             s["passi"] = random.choice([2100, 2600, 3300])
             s["kcal attive"] = random.choice([90, 120, 160])

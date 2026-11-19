@@ -53,7 +53,7 @@ Each node opens a view of the same dashboard:
 | Sheet | What it shows |
 | --- | --- |
 | **Oggi** (Today) | Daily habits with streaks, meals checklist, **exam study planner**, calendar agenda (any iCal feed), trends |
-| **Salute** (Health) | **Sleep, Recovery and Strain rings** (0–100) and sleep details |
+| **Salute** (Health) | **Sleep, Recovery and Strain rings** (0–100), sleep details, and tiles for HRV, resting heart rate, respiration, SpO2 and wrist temperature |
 | **Cibo** (Food) | Today's meals with calories and macros, **barcode scanner** and product search via [Open Food Facts](https://world.openfoodfacts.org) plus your own products, weight log |
 | **Soldi** (Money) | Portfolio value, gains, cash and categorized spending across accounts |
 | **Pacchi** (Parcels) | Paste a tracking code and get the parcel's route on a timeline, with a push notification at every stage |
@@ -68,12 +68,12 @@ The dashboard is a single HTML page originally built as a claude.ai Artifact. A 
 ### Health scores without a wearable subscription
 [`punteggi.py`](server/punteggi.py) computes three scores from Apple Health data that an iOS Shortcut posts to the server:
 - **Sleep** — duration vs. your need, deep and REM share, efficiency, schedule regularity.
-- **Recovery** — resting heart rate and HRV against your 30-day baseline, plus last night's sleep.
+- **Recovery** — resting heart rate and HRV against your 30-day baseline, plus last night's sleep. Overnight respiration rate and wrist temperature above your own average subtract up to 5 points each (lower values change nothing); SpO2 is shown but stays out of the score because the watch's estimate is noisy. The weights are ours, not validated.
 - **Strain** — steps (or active calories), weight-training volume from Hevy and martial arts sessions; the daily target scales with recovery.
 
-Tap a ring to see exactly how the number was calculated.
+Tap a ring to see exactly how the number was calculated. A *signals* check counts how many of low HRV, high resting heart rate, high respiration, high wrist temperature and low SpO2 are more than 2 standard deviations from your own average; with 3 or more the card warns you that something may be coming on. A receiver on the server drops values that cannot be real (SpO2 under 70, wrist temperature outside 30–40 °C…), so a wrong Shortcut variable doesn't end up in the charts.
 
-**Sick days.** The Health tab has an *Illness* card: log one or more days with symptoms, fever, severity and a note (stored in the `malattia` collection, one document per day), and see that day's HRV, resting heart rate, sleep and steps next to your own average. Sick days are left out of the baselines, so an illness doesn't drag your "normal" down for weeks, and the Strain ring shows a rest day instead of a target. Just numbers: no diagnosis, no advice.
+**Sick days.** The Health tab has an *Illness* card: log one or more days with symptoms, fever, severity and a note (stored in the `malattia` collection, one document per day), and see that day's HRV, resting heart rate, respiration, wrist temperature, sleep and steps next to your own average. Sick days are left out of the baselines, so an illness doesn't drag your "normal" down for weeks, and the Strain ring shows a rest day instead of a target. Just numbers: no diagnosis, no advice.
 
 ### A health assistant that is not a doctor
 A `medico` subagent (also personal, not in the repo) follows symptoms and sick days: it reads the `malattia` collection, Apple Health numbers and the coach's notes, asks at most three questions, spots red-flag signs, says when to see a real doctor, and relies only on peer-reviewed science and clinical guidelines. No diagnoses, no prescriptions. It has its own mascot in the agent menu.
