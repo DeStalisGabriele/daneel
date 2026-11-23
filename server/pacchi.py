@@ -3,8 +3,11 @@
 Da dove arrivano i dati (scelta di Gabriele, 2026-11-02: prima i corrieri gratis, poi Ship24):
 - Poste Italiane e SDA: il servizio pubblico di poste.it (DQ-REST), gratis e senza chiave;
 - InPost: l'API pubblica ShipX di InPost Italia, gratis e senza chiave (codici di 24 cifre);
-- tutti gli altri (Amazon, DHL, GLS, BRT, UPS, Mondial Relay…): Ship24, con la chiave in ~/.config/daneel-app/ship24
-  (piano gratuito: 10 pacchi al mese). /trackers/track è idempotente: un pacco consuma la quota una volta sola.
+- Amazon (facoltativo): se l'account è collegato con la libreria amazon-orders, gli ordini in arrivo si aggiungono da
+  soli e lo stato (tradotto in italiano) arriva da Amazon, senza consumare la quota di Ship24;
+- tutti gli altri (DHL, GLS, BRT, UPS, Mondial Relay… e i codici TBA di Amazon): Ship24, con la chiave in
+  ~/.config/daneel-app/ship24 (piano gratuito: 10 pacchi al mese). /trackers/track è idempotente: un pacco consuma
+  la quota una volta sola.
 
 I pacchi stanno nella Plancia (collezione "pacchi", un documento per codice), così la pagina si aggiorna in diretta e
 finiscono nel backup notturno. Un controllo ogni ora aggiorna quelli in viaggio e manda una notifica quando cambia la
@@ -16,6 +19,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -166,6 +170,190 @@ def _ship24(codice: str, cap: str | None = None) -> dict | None:
     return {"corriere": ", ".join(sorted(corrieri)) or "Corriere", "fonte": "ship24", "eventi": eventi, "fase": fase}
 
 
+# ---------- Amazon (facoltativo: serve un account collegato) ----------
+# Con la libreria amazon-orders (pip install "amazon-orders[browser]") e un accesso fatto una volta con
+# `amazon-orders --domain amazon.it login --browser` (la password non passa mai di qui), la scheda legge gli ordini
+# dell'account: i pacchi Amazon si aggiungono da soli e lo stato arriva da Amazon, senza usare la quota di Ship24.
+# Senza libreria o senza accesso questa parte non fa nulla. Amazon la mostra in inglese: qui si traduce.
+
+AMAZON_DOMINIO = os.environ.get("DANEEL_AMAZON_DOMINIO", "amazon.it")
+AMAZON_CACHE = 600     # secondi in cui gli ordini letti restano validi (un solo giro per tutti i pacchi)
+COL_TOLTI = "pacchi_tolti"  # i pacchi Amazon tolti a mano: l'importazione automatica non li rimette
+_amazon_cache: dict = {"quando": 0.0, "pacchi": {}}
+_amazon_blocco = threading.Lock()
+MESI_EN = {"january": "gennaio", "february": "febbraio", "march": "marzo", "april": "aprile", "may": "maggio",
+           "june": "giugno", "july": "luglio", "august": "agosto", "september": "settembre", "october": "ottobre",
+           "november": "novembre", "december": "dicembre"}
+GIORNI_EN = {"monday": "lunedì", "tuesday": "martedì", "wednesday": "mercoledì", "thursday": "giovedì",
+             "friday": "venerdì", "saturday": "sabato", "sunday": "domenica"}
+ADESSO_EN = {"today": "oggi", "tomorrow": "domani", "yesterday": "ieri"}
+
+
+def _it_quando(resto: str) -> str:
+    """'tomorrow' → 'domani', '22 November' → 'il 22 novembre', '25 - 27 November' → 'tra il 25 e il 27 novembre',
+    'Monday, 24 November' → 'lunedì 24 novembre'."""
+    r = re.sub(r"[,.]", " ", resto.strip().lower())
+    r = " ".join(r.split())
+    if not r:
+        return ""
+    for en, it in {**MESI_EN, **GIORNI_EN, **ADESSO_EN}.items():
+        r = re.sub(rf"\b{en}\b", it, r)
+    r = re.sub(r"\bby\b", "entro", r)
+    intervallo = re.match(r"(?:\w+ )?(\d{1,2}) ?- ?(\d{1,2}) (\w+)$", r)
+    if intervallo:
+        return f"tra il {intervallo.group(1)} e il {intervallo.group(2)} {intervallo.group(3)}"
+    r = re.sub(r"^(?:(\w+) )?(\d{1,2}) (\w+)$", lambda m: f"{m.group(1) + ' ' if m.group(1) else ''}{m.group(2)} {m.group(3)}", r)
+    return ("il " + r) if re.match(r"\d", r) else r
+
+
+def _amazon_traduci(testo: str) -> tuple[str, str]:
+    """Lo stato che Amazon scrive sulla spedizione (inglese) → (fase, testo in italiano). Lo stato non riconosciuto
+    resta com'è, "in viaggio", con le date già in italiano."""
+    t = " ".join((testo or "").split())
+    c = t.lower()
+
+    def dopo(*prefissi):
+        for p in prefissi:
+            if c.startswith(p):
+                return t[len(p):].strip()
+        return None
+
+    def con(base: str, resto: str) -> str:
+        q = _it_quando(re.sub(r"^(on|by|between)\s+", "", resto, flags=re.I))
+        return f"{base} {q}".strip()
+
+    if "not yet shipped" in c or c.startswith(("preparing", "order placed", "ordered", "processing")):
+        return "attesa", "Il venditore sta preparando il pacco"
+    r = dopo("delivered")
+    if r is not None:
+        return "consegnato", con("Consegnato", r)
+    r = dopo("collected", "picked up")
+    if r is not None:
+        return "consegnato", con("Ritirato", r)
+    if "left" in c and ("door" in c or "porch" in c or "neighbo" in c or "safe place" in c):
+        return "consegnato", "Lasciato dal corriere (porta o vicino)"
+    if "out for delivery" in c:
+        return "consegna", "In consegna oggi"
+    if "pickup" in c or "pick-up" in c or "locker" in c or "collection point" in c:
+        return "ritiro", "Pronto per il ritiro"
+    if "attempt" in c or "undeliverable" in c or "could not be delivered" in c:
+        return "mancata", "Consegna non riuscita"
+    if "return" in c or "refund" in c or "cancel" in c:
+        return "problema", ("Rimborsato" if "refund" in c else "Annullato" if "cancel" in c else "Reso")
+    if "delay" in c or "running late" in c or c.startswith("late"):
+        return "viaggio", "In ritardo" + (" · " + _it_quando(c.split("by", 1)[1]) if "by" in c else "")
+    r = dopo("now arriving", "arriving", "arrives", "expected")
+    if r is not None:
+        if r.lower().startswith("today"):
+            return "consegna", "Arriva oggi"
+        return "viaggio", con("Arriva", r)
+    if c.startswith(("shipped", "dispatched", "on the way", "on its way")):
+        return "viaggio", "Spedito"
+    return "viaggio", re.sub(r"\s+", " ", t) or "In viaggio"
+
+
+class _SenzaDomande:
+    """Sul server nessuno può rispondere a un codice o a una domanda di Amazon: meglio un errore subito."""
+
+    def echo(self, msg, **kw):
+        log.info("amazon: %s", msg)
+
+    def prompt(self, msg, type=None, **kw):
+        raise RuntimeError("Amazon chiede un'altra verifica: rifai l'accesso con `amazon-orders login --browser`")
+
+
+def _amazon_sessione():
+    """Un AmazonOrders con la sessione già salvata. Solleva HTTPException(424) se la libreria o l'accesso mancano."""
+    try:
+        from amazonorders.conf import AmazonOrdersConfig
+        from amazonorders.orders import AmazonOrders
+        from amazonorders.session import AmazonSession
+    except ImportError:
+        raise HTTPException(424, "Per gli ordini Amazon serve la libreria amazon-orders")
+    conf = AmazonOrdersConfig(data={"domain": AMAZON_DOMINIO})
+    if not Path(conf.cookie_jar_path).exists():
+        raise HTTPException(424, "Account Amazon non collegato: serve `amazon-orders login --browser`")
+    sessione = AmazonSession(config=conf, io=_SenzaDomande())
+    try:
+        sessione.login()
+    except Exception as ex:  # noqa: BLE001
+        log.warning("amazon: accesso non riuscito: %s", str(ex)[:200])
+        raise HTTPException(424, "Sessione Amazon scaduta: rifai l'accesso con `amazon-orders login --browser`")
+    return AmazonOrders(sessione)
+
+
+def _amazon_attivo() -> bool:
+    try:
+        from amazonorders.conf import AmazonOrdersConfig
+        return Path(AmazonOrdersConfig(data={"domain": AMAZON_DOMINIO}).cookie_jar_path).exists()
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _amazon_spedizioni(ordine) -> dict:
+    """Le spedizioni di un ordine come pacchi: {codice: {...}}. Un ordine con più spedizioni ha un suffisso A, B…"""
+    cifre = re.sub(r"\D", "", ordine.order_number or "")
+    out = {}
+    spedizioni = [s for s in (ordine.shipments or []) if s.delivery_status]
+    for i, s in enumerate(spedizioni):
+        codice = "AMZ" + cifre + (chr(65 + i) if len(spedizioni) > 1 else "")
+        articoli = [a.title for a in (s.items or []) if a.title] or [a.title for a in (ordine.items or []) if a.title]
+        out[codice] = {"ordine": ordine.order_number, "spedizione": s.shipment_id, "stato": s.delivery_status,
+                       "nome": (articoli[0] if articoli else "Ordine Amazon")[:60]}
+    return out
+
+
+def _amazon_leggi(forza: bool = False) -> dict:
+    """Gli ordini degli ultimi 30 giorni, in cache per qualche minuto (un giro solo per tutti i pacchi Amazon)."""
+    with _amazon_blocco:
+        if not forza and time.time() - _amazon_cache["quando"] < AMAZON_CACHE:
+            return _amazon_cache["pacchi"]
+        ordini = _amazon_sessione().get_orders(time_filter="last30", full_details=True)
+        pacchi = {}
+        for o in ordini:
+            if not getattr(o, "cancelled", False):
+                pacchi.update(_amazon_spedizioni(o))
+        _amazon_cache.update(quando=time.time(), pacchi=pacchi)
+        return pacchi
+
+
+def _amazon(p: dict) -> dict | None:
+    """Aggiorna un pacco Amazon già in lista. Aggiunge un evento a ogni cambio di stato."""
+    info = _amazon_leggi().get(p["codice"])
+    if not info and p.get("ordine"):  # ordine più vecchio di 30 giorni: si chiede da solo
+        try:
+            info = _amazon_spedizioni(_amazon_sessione().get_order(p["ordine"])).get(p["codice"])
+        except HTTPException:
+            raise
+        except Exception:  # noqa: BLE001
+            log.exception("amazon: ordine %s", p.get("ordine"))
+    if not info:
+        return None
+    fase, cosa = _amazon_traduci(info["stato"])
+    eventi = list(p.get("eventi") or [])
+    if not eventi or eventi[-1].get("cosa") != cosa:
+        eventi.append({"quando": datetime.now(ROMA).isoformat(timespec="minutes"), "dove": "", "cosa": cosa, "fase": fase})
+    return {"corriere": "Amazon", "fonte": "amazon", "eventi": eventi, "fase": fase,
+            "ordine": info["ordine"], "spedizione": info["spedizione"]}
+
+
+async def importa_amazon() -> int:
+    """Aggiunge alla lista i pacchi Amazon in arrivo che non ci sono ancora (i consegnati e quelli tolti a mano no)."""
+    pacchi = await asyncio.to_thread(_amazon_leggi, True)
+    nuovi = 0
+    for codice, info in pacchi.items():
+        fase, cosa = _amazon_traduci(info["stato"])
+        if fase == "consegnato" or plancia._leggi(COL, codice)[0] or plancia._leggi(COL_TOLTI, codice)[0]:
+            continue
+        adesso = datetime.now(ROMA).isoformat(timespec="minutes")
+        plancia._scrivi(COL, codice, {
+            "codice": codice, "nome": info["nome"], "aggiunto": adesso, "controllato": adesso, "cap": None,
+            "corriere": "Amazon", "fonte": "amazon", "ordine": info["ordine"], "spedizione": info["spedizione"],
+            "eventi": [{"quando": adesso, "dove": "", "cosa": cosa, "fase": fase}], "fase": fase, "errore": None})
+        nuovi += 1
+    return nuovi
+
+
 def _cerca(codice: str, fonte: str | None = None, cap: str | None = None) -> dict | None:
     """Prova i corrieri gratis prima di Ship24, così la quota si usa solo quando serve. Con `fonte` (pacco già
     trovato) va dritto da quel corriere. I codici di Amazon Logistics (TBA…) li conosce solo Ship24."""
@@ -215,7 +403,10 @@ def _togli(codice: str):
 
 
 async def _aggiorna(p: dict, avvisa: bool) -> dict:
-    trovato = await asyncio.to_thread(_cerca, p["codice"], p.get("fonte"), p.get("cap"))
+    if p.get("fonte") == "amazon":
+        trovato = await asyncio.to_thread(_amazon, p)
+    else:
+        trovato = await asyncio.to_thread(_cerca, p["codice"], p.get("fonte"), p.get("cap"))
     adesso = datetime.now(ROMA).isoformat(timespec="minutes")
     p["controllato"] = adesso
     if not trovato:
@@ -283,14 +474,33 @@ async def aggiorna(dati: dict, authorization: str | None = Header(None)):
 @router.post("/togli")
 async def togli(dati: dict, authorization: str | None = Header(None)):
     _controlla(authorization)
-    _togli(_pulisci(dati.get("codice")))
+    codice = _pulisci(dati.get("codice"))
+    p, _ = plancia._leggi(COL, codice)
+    if p and p.get("fonte") == "amazon":  # tolto a mano: l'importazione automatica non lo rimette
+        plancia._scrivi(COL_TOLTI, codice, {"codice": codice, "quando": datetime.now(ROMA).isoformat(timespec="minutes")})
+    _togli(codice)
     return {"ok": True}
+
+
+@router.post("/amazon")
+async def amazon(authorization: str | None = Header(None)):
+    """Importa ora i pacchi in arrivo dall'account Amazon collegato (di solito lo fa da solo il controllo orario)."""
+    _controlla(authorization)
+    return {"aggiunti": await importa_amazon()}
 
 
 async def controlla_periodicamente():
     """Ogni ora: aggiorna i pacchi non ancora consegnati (notifica se cambia la fase) e toglie i consegnati vecchi."""
     while True:
         await asyncio.sleep(OGNI)
+        if await asyncio.to_thread(_amazon_attivo):
+            try:
+                if nuovi := await importa_amazon():
+                    log.info("amazon: %d pacchi nuovi", nuovi)
+            except HTTPException as ex:
+                log.warning("amazon: %s", ex.detail)
+            except Exception:  # noqa: BLE001
+                log.exception("importazione degli ordini Amazon")
         for p in _tutti():
             try:
                 if p.get("fase") == "consegnato":
